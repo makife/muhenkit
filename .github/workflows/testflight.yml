@@ -2,6 +2,7 @@ name: TestFlight
 
 # iOS sürümünü App Store Connect'e (TestFlight) yükler: arşiv imzasız alınır; dağıtım imzasını
 # (sertifika + profil) dışa aktarma adımı API anahtarıyla kendisi oluşturur — cihaz kaydı gerekmez.
+# .ipa sonra altool ile yüklenir.
 # Gereken depo gizlileri (Settings → Secrets and variables → Actions):
 #   ASC_KEY_ID, ASC_ISSUER_ID, ASC_KEY_P8 (AuthKey_XXXX.p8 dosyasının içeriği), APPLE_TEAM_ID
 on:
@@ -38,10 +39,12 @@ jobs:
           # altool anahtarı ~/private_keys altında arar
           mkdir -p ~/private_keys
           KEY="$HOME/private_keys/AuthKey_$ASC_KEY_ID.p8"
-          printf '%s
-' "$ASC_KEY_P8" > "$KEY"
+          printf '%s\n' "$ASC_KEY_P8" > "$KEY"
           AUTH=(-allowProvisioningUpdates -authenticationKeyPath "$KEY" -authenticationKeyID "$ASC_KEY_ID" -authenticationKeyIssuerID "$ASC_ISSUER_ID")
-          xcodebuild -project MuhenKit.xcodeproj -scheme MuhenKit-iOS -configuration Release             -destination 'generic/platform=iOS' -archivePath build/MuhenKit.xcarchive             DEVELOPMENT_TEAM="$TEAM" CURRENT_PROJECT_VERSION="$GITHUB_RUN_NUMBER" CODE_SIGNING_ALLOWED=NO             archive > archive.log 2>&1 || { bash ../.github/report.sh archive.log; exit 1; }
+          xcodebuild -project MuhenKit.xcodeproj -scheme MuhenKit-iOS -configuration Release \
+            -destination 'generic/platform=iOS' -archivePath build/MuhenKit.xcarchive \
+            DEVELOPMENT_TEAM="$TEAM" CURRENT_PROJECT_VERSION="$GITHUB_RUN_NUMBER" CODE_SIGNING_ALLOWED=NO \
+            archive > archive.log 2>&1 || { bash ../.github/report.sh archive.log; exit 1; }
           cat > ExportOptions.plist <<PLIST
           <?xml version="1.0" encoding="UTF-8"?>
           <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -54,8 +57,10 @@ jobs:
             <key>uploadSymbols</key><false/>
           </dict></plist>
           PLIST
-          xcodebuild -exportArchive -archivePath build/MuhenKit.xcarchive -exportOptionsPlist ExportOptions.plist             -exportPath build/export "${AUTH[@]}" > export.log 2>&1 || { bash ../.github/report.sh export.log; exit 1; }
+          xcodebuild -exportArchive -archivePath build/MuhenKit.xcarchive -exportOptionsPlist ExportOptions.plist \
+            -exportPath build/export "${AUTH[@]}" > export.log 2>&1 || { bash ../.github/report.sh export.log; exit 1; }
           IPA=$(ls build/export/*.ipa | head -1)
-          xcrun altool --upload-app -f "$IPA" -t ios --apiKey "$ASC_KEY_ID" --apiIssuer "$ASC_ISSUER_ID" > upload.log 2>&1             || { cat upload.log; bash ../.github/report.sh upload.log; exit 1; }
+          xcrun altool --upload-app -f "$IPA" -t ios --apiKey "$ASC_KEY_ID" --apiIssuer "$ASC_ISSUER_ID" > upload.log 2>&1 \
+            || { cat upload.log; bash ../.github/report.sh upload.log; exit 1; }
           cat upload.log
           echo "::notice::Yüklendi: yapı $GITHUB_RUN_NUMBER. App Store Connect işledikten sonra (5-15 dk) TestFlight'ta görünür."
