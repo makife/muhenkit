@@ -144,22 +144,33 @@ def framed(shot, w, h, title, sub, corner):
 
 
 def screens(folder):
-    shots = sorted(f for f in os.listdir(folder) if f.lower().endswith((".png", ".jpg", ".jpeg")))
+    """Klasör adı 'android' içeriyorsa Android, 'ipad' içeriyorsa iPad, yoksa iPhone boyutu.
+    basliklar.txt varsa her satır "Başlık | alt başlık" (görüntü sırasıyla)."""
+    shots = sorted((f for f in os.listdir(folder) if f.lower().endswith((".png", ".jpg", ".jpeg"))),
+                   key=lambda f: (len(f), f))
     if not shots:
         print("Klasörde ekran görüntüsü yok:", folder)
         return
-    targets = {
-        "iphone_6.9": (1320, 2868, 110),
-        "ipad_13": (2064, 2752, 60),
-        "android_telefon": (1080, 1920, 70),
-    }
-    for name, (w, h, corner) in targets.items():
-        out = os.path.join(OUT, name)
-        os.makedirs(out, exist_ok=True)
-        for i, f in enumerate(shots):
-            title, sub = CAPTIONS[i % len(CAPTIONS)]
-            framed(Image.open(os.path.join(folder, f)), w, h, title, sub, corner).save(os.path.join(out, f"{i + 1:02d}.png"))
-        print(name, len(shots), "gorsel:", out)
+    caps = CAPTIONS
+    cf = os.path.join(folder, "basliklar.txt")
+    if os.path.exists(cf):
+        caps = [tuple(x.strip() for x in l.split("|", 1)) for l in open(cf, encoding="utf-8") if "|" in l]
+    low = folder.lower()
+    if "android" in low:
+        name, (w, h, corner), crop = "android_telefon", (1080, 1920, 70), (0.032, 0.046)  # durum ve gezinme çubuğu
+    elif "ipad" in low:
+        name, (w, h, corner), crop = "ipad_13", (2064, 2752, 40), (0.0, 0.0)
+    else:
+        name, (w, h, corner), crop = "iphone_6.9", (1320, 2868, 110), (0.0, 0.0)
+    out = os.path.join(OUT, name)
+    os.makedirs(out, exist_ok=True)
+    for i, f in enumerate(shots):
+        title, sub = caps[i % len(caps)]
+        im = Image.open(os.path.join(folder, f)).convert("RGB")
+        if crop != (0.0, 0.0):
+            im = im.crop((0, int(im.height * crop[0]), im.width, int(im.height * (1 - crop[1]))))
+        framed(im, w, h, title, sub, corner).save(os.path.join(out, f"{i + 1:02d}.png"))
+    print(name, len(shots), "gorsel:", out)
 
 
 if __name__ == "__main__":
