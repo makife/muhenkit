@@ -257,6 +257,26 @@ final class CadEditor: ObservableObject {
         }
     }
 
+    // arayüz bağlamı (ipucu çubuğu düğmeleri)
+    var hasPivot: Bool { pivot != nil }
+    var hasAnchor: Bool { anchor != nil }
+    var plineCount: Int { pline.count }
+    var hasOffsetTarget: Bool { offsetTarget != nil }
+    var dimStage: Int { anchor == nil ? 0 : dimP2 == nil ? 1 : 2 }
+    /// Yerleştirilen bir tablo mu (ölçek sabit)
+    var placingTable: Bool { fixedScale != nil }
+
+    func cancelPivot() {
+        pivot = nil
+        scaleRef = nil
+        setOverlay()
+    }
+
+    func setSymbolRot(_ deg: Double) {
+        symbolRot = deg
+        preview((0, hover.x, hover.y), firstOverride: nil)
+    }
+
     var canFinish: Bool { (tool == .line && anchor != nil) || (tool == .pline && !pline.isEmpty) }
 
     func selectAll() {
