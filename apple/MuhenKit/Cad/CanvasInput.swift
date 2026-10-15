@@ -72,7 +72,7 @@ struct CanvasInputView: UIViewRepresentable {
             (g is UIPinchGestureRecognizer && o is UIPanGestureRecognizer) || (o is UIPinchGestureRecognizer && g is UIPanGestureRecognizer)
         }
 
-        func gestureRecognizerShouldBegin(_ g: UIGestureRecognizer) -> Bool {
+        override func gestureRecognizerShouldBegin(_ g: UIGestureRecognizer) -> Bool {
             // çizim aracında uzun basma pencere seçimi yapmasın
             if g is UILongPressGestureRecognizer { return !handlers.capturesDrag() }
             return true
