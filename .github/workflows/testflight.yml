@@ -36,6 +36,8 @@ jobs:
         run: |
           brew install xcodegen
           xcodegen generate
+          # gizlilere yapıştırırken kalmış boşluk / satır sonlarını temizle
+          export ASC_KEY_ID=$(printf '%s' "$ASC_KEY_ID" | tr -d '[:space:]') ASC_ISSUER_ID=$(printf '%s' "$ASC_ISSUER_ID" | tr -d '[:space:]') TEAM=$(printf '%s' "$TEAM" | tr -d '[:space:]')
           # yükleme araçları anahtarı ~/private_keys altında arar
           mkdir -p ~/private_keys
           export KEY="$HOME/private_keys/AuthKey_$ASC_KEY_ID.p8"
@@ -73,6 +75,11 @@ jobs:
             xcrun altool --upload-package "$IPA" -t ios --apple-id 6823229508 --bundle-id com.ergan.muhenkitelektrik \
               --bundle-version "$GITHUB_RUN_NUMBER" --bundle-short-version-string "$VER" \
               --apiKey "$ASC_KEY_ID" --apiIssuer "$ASC_ISSUER_ID" >> upload.log 2>&1 && OK=1
+          fi
+          if [ "$OK" != "1" ]; then
+            # bireysel (Individual) anahtar: Issuer ID verilmez
+            echo "--- Issuer ID'siz (bireysel anahtar) deneniyor ---" >> upload.log
+            xcrun altool --upload-app -f "$IPA" -t ios --apiKey "$ASC_KEY_ID" >> upload.log 2>&1 && OK=1
           fi
           if [ "$OK" != "1" ]; then tail -80 upload.log; bash ../.github/report.sh upload.log; exit 1; fi
           tail -15 upload.log
