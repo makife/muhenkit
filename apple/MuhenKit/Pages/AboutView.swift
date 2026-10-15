@@ -2,7 +2,7 @@ import SwiftUI
 
 /// Hakkında: sürüm, sorumluluk notu, gizlilik
 struct AboutView: View {
-    static let privacyURL = URL(string: "https://makife.github.io/muhenkit/gizlilik.html")!
+    static let privacyURL = URL(string: "https://elegant-cannoli-ecf0d2.netlify.app")!
     @Environment(\.dismiss) private var dismiss
 
     private var version: String {

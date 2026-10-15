@@ -411,7 +411,7 @@ private fun ModuleChip(i: Int, r: Route, lit: Boolean, onPress: (Boolean) -> Uni
 }
 
 
-const val PRIVACY_URL = "https://makife.github.io/muhenkit/gizlilik.html"
+const val PRIVACY_URL = "https://elegant-cannoli-ecf0d2.netlify.app"
 const val SUPPORT_EMAIL = "makifergan@gmail.com"
 
 /** Hakkında: sürüm, sorumluluk notu, gizlilik */

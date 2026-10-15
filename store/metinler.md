@@ -2,7 +2,7 @@
 
 Uygulama adı dört platformda da **MühenKit Elektrik** (ü ile).
 
-Destek: makifergan@gmail.com · Gizlilik: https://makife.github.io/muhenkit/gizlilik.html · Web: https://makife.github.io/muhenkit/
+Destek: makifergan@gmail.com · Gizlilik: https://elegant-cannoli-ecf0d2.netlify.app · Web: https://elegant-cannoli-ecf0d2.netlify.app
 
 ## Ortak açıklama (Türkçe)
 
@@ -54,8 +54,8 @@ Not: Hesaplar ve tablolar ön tasarım ve kontrol amaçlıdır; projenin yönetm
 | Anahtar kelimeler | dxf,autocad,cad,elektrik,proje,çizim,aydınlatma,topraklama,kablo,gerilim,smm,mühendis,tesisat,pano | 100 (98) |
 | Kategori | Birincil: Üretkenlik (Productivity) · İkincil: İş (Business) | |
 | Yaş sınırı | 4+ (anketteki tüm sorulara "Hayır") | |
-| Destek URL | https://makife.github.io/muhenkit/ | |
-| Gizlilik URL | https://makife.github.io/muhenkit/gizlilik.html | |
+| Destek URL | https://elegant-cannoli-ecf0d2.netlify.app | |
+| Gizlilik URL | https://elegant-cannoli-ecf0d2.netlify.app | |
 | App Privacy | "Data Not Collected" (Veri toplanmıyor) | |
 | Telif | © 2026 (adınız / firmanız) | |
 
@@ -75,7 +75,7 @@ Mac: 1280×800 ya da 2880×1800, en az 1 adet.
 | Hedef kitle | 18+ (çocuklara yönelik değil) | |
 | Veri güvenliği | "Uygulama hiçbir kullanıcı verisi toplamıyor veya paylaşmıyor" · Şifreleme: veri aktarılmıyor | |
 | Reklam | Hayır | |
-| Gizlilik politikası | https://makife.github.io/muhenkit/gizlilik.html | |
+| Gizlilik politikası | https://elegant-cannoli-ecf0d2.netlify.app | |
 | İletişim e-postası | makifergan@gmail.com | |
 
 Grafikler: simge 512×512 (core/content/brand/icon_1024.png küçültülür), öne çıkan grafik 1024×500,
@@ -92,7 +92,7 @@ telefon ekran görüntüsü en az 2 (16:9 / 9:16, kenar 320–3840 px), 7" ve 10
 | Arama terimleri (en çok 7) | DXF, elektrik projesi, AutoCAD, aydınlatma hesabı, topraklama, gerilim düşümü, SMM |
 | Kategori | Üretkenlik (alt: —) · İkincil: İş |
 | Yaş derecelendirmesi (IARC) | Anket: hepsi "Hayır" → 3+ |
-| Gizlilik politikası | https://makife.github.io/muhenkit/gizlilik.html |
+| Gizlilik politikası | https://elegant-cannoli-ecf0d2.netlify.app |
 | Destek | makifergan@gmail.com |
 
 Ekran görüntüleri: masaüstü en az 1, önerilen 1920×1080 ya da 1366×768.

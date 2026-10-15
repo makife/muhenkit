@@ -13,7 +13,7 @@ Kullanıcı Türk elektrik mühendisi; iletişim **Türkçe**. Kod yorumları ve
 | `android/` | Kotlin + Jetpack Compose. JNI köprüsü `app/src/main/cpp`. Çizim OpenGL (`cad/CadGlView.kt`) |
 | `windows/MuhenKit` | C# WinUI 3 + Win2D. Çekirdek `windows/native/x64/mkcore.dll` (P/Invoke, `Core/Native.cs`) |
 | `apple/` | Tek SwiftUI kodu → iOS (16+) ve macOS (13+) hedefleri. XcodeGen (`project.yml`), çekirdek Bridging.h ile doğrudan derlenir |
-| `docs/` | GitHub Pages: tanıtım + **gizlilik politikası** (https://makife.github.io/muhenkit/gizlilik.html) |
+| `docs/` | Gizlilik politikası kaynağı. Yayın: **Netlify** https://elegant-cannoli-ecf0d2.netlify.app (kullanıcı `docs/gizlilik.html`ı index.html olarak elle yükler); GitHub Pages kopyası da duruyor |
 | `.github/` | CI iş akışları ve yardımcı betikler |
 
 Platformlar arası eşdeğer dosyalar (bir özellik eklerken hepsini güncelle):

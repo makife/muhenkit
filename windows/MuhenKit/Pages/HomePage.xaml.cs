@@ -331,7 +331,7 @@ public sealed partial class HomePage : Page
         return border;
     }
 
-    public const string PrivacyUrl = "https://makife.github.io/muhenkit/gizlilik.html";
+    public const string PrivacyUrl = "https://elegant-cannoli-ecf0d2.netlify.app";
 
     /// <summary>Hakkında: sürüm, sorumluluk notu, gizlilik</summary>
     private async void ShowAbout()
