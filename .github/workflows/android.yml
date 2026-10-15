@@ -10,20 +10,20 @@ jobs:
   apk:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-java@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: 17
-      - uses: android-actions/setup-android@v3
+      # Android SDK çalıştırıcıda hazır ($ANDROID_HOME); yalnızca NDK ve CMake eklenir
       - name: NDK ve CMake
-        run: sdkmanager "ndk;28.2.13676358" "cmake;3.22.1"
+        run: yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "ndk;28.2.13676358" "cmake;3.22.1" > /dev/null
       - name: APK derle
         working-directory: android
         run: |
           chmod +x gradlew
           ./gradlew assembleRelease --no-daemon
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v5
         with:
           name: MuhenKit-android
           path: android/app/build/outputs/apk/release/*.apk

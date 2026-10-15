@@ -10,7 +10,7 @@ jobs:
   build:
     runs-on: macos-15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Xcode projesi üret
         working-directory: apple
         run: |
@@ -31,7 +31,7 @@ jobs:
           xcodebuild -project MuhenKit.xcodeproj -scheme MuhenKit-iOS -configuration Release \
             -derivedDataPath build -destination 'generic/platform=iOS' \
             CODE_SIGNING_ALLOWED=NO build | tail -n 60
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v5
         with:
           name: MuhenKit-macOS
           path: apple/MuhenKit-macOS.zip

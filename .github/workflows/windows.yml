@@ -10,11 +10,11 @@ jobs:
   exe:
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/setup-dotnet@v5
         with:
           dotnet-version: 8.0.x
       - name: Çekirdek DLL (mkcore.dll)
@@ -25,7 +25,7 @@ jobs:
       - name: Uygulama derle
         working-directory: windows/MuhenKit
         run: dotnet build -c Release
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v5
         with:
           name: MuhenKit-windows
           path: windows/MuhenKit/bin/Release/net8.0-windows10.0.19041.0/win-x64/
