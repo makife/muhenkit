@@ -1,3 +1,5 @@
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
@@ -13,7 +15,8 @@ android {
         applicationId = "com.muhenkit.app"
         minSdk = 26
         targetSdk = 36
-        versionCode = 1
+        // CI'da her derleme artan numara (Play aynı numarayı ikinci kez kabul etmez)
+        versionCode = (System.getenv("VERSION_CODE") ?: "1").toInt()
         versionName = "2.0.0"
         ndk { abiFilters += listOf("arm64-v8a", "armeabi-v7a", "x86_64") }
     }
@@ -26,11 +29,28 @@ android {
         }
     }
 
+    // Play yükleme anahtarı: bilgisayarda keystore.properties (depoya girmez), CI'da ortam değişkenleri.
+    // İkisi de yoksa debug anahtarıyla imzalanır.
+    val ks = Properties().apply {
+        val f = rootProject.file("keystore.properties")
+        if (f.exists()) f.inputStream().use { load(it) }
+    }
+    val ksFile = System.getenv("ANDROID_KEYSTORE_FILE") ?: ks.getProperty("storeFile")
+    signingConfigs {
+        if (ksFile != null && file(ksFile).exists()) {
+            create("upload") {
+                storeFile = file(ksFile)
+                storePassword = System.getenv("ANDROID_KEYSTORE_PASSWORD") ?: ks.getProperty("storePassword")
+                keyAlias = System.getenv("ANDROID_KEY_ALIAS") ?: ks.getProperty("keyAlias")
+                keyPassword = System.getenv("ANDROID_KEY_PASSWORD") ?: ks.getProperty("keyPassword")
+            }
+        }
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = false
-            // şimdilik debug anahtarıyla imzalanır (telefona doğrudan kurulabilsin)
-            signingConfig = signingConfigs.getByName("debug")
+            signingConfig = signingConfigs.findByName("upload") ?: signingConfigs.getByName("debug")
         }
     }
 

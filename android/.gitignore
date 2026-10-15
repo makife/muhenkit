@@ -5,3 +5,6 @@ app/.cxx/
 local.properties
 *.iml
 .idea/
+
+# imza anahtarı bilgileri
+keystore.properties
