@@ -12,6 +12,9 @@ import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Info
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -227,6 +230,8 @@ private fun tracePaths(mcu: Rect, chips: List<Rect>, unit: Float): List<Path> {
 private fun HomeScreen(onOpen: (Route) -> Unit) {
     var query by remember { mutableStateOf("") }
     var pressed by remember { mutableStateOf<Int?>(null) }
+    var about by remember { mutableStateOf(false) }
+    if (about) AboutDialog { about = false }
     val list = Route.entries.filter { query.isBlank() || "${it.title} ${it.subtitle}".contains(query, ignoreCase = true) }
     // akım darbeleri: 4 saniyelik döngü
     val flow by rememberInfiniteTransition(label = "akım").animateFloat(
@@ -290,7 +295,7 @@ private fun HomeScreen(onOpen: (Route) -> Unit) {
                         }
                         // MCU: başlık + arama
                         Box(Modifier.offset((mcu.left / density.density).dp, mcuTop).size(mcuW, mcuH)) {
-                            McuChip(query) { query = it }
+                            McuChip(query, onAbout = { about = true }) { query = it }
                         }
                         // modül çipleri
                         list.forEachIndexed { i, r ->
@@ -314,7 +319,7 @@ private fun HomeScreen(onOpen: (Route) -> Unit) {
 }
 
 @Composable
-private fun McuChip(query: String, onQuery: (String) -> Unit) {
+private fun McuChip(query: String, onAbout: () -> Unit, onQuery: (String) -> Unit) {
     Column(
         Modifier.fillMaxSize().padding(horizontal = 10.dp, vertical = 8.dp)
             .shadow(16.dp, RoundedCornerShape(6.dp))
@@ -328,6 +333,9 @@ private fun McuChip(query: String, onQuery: (String) -> Unit) {
             Box(Modifier.size(8.dp).clip(CircleShape).background(Pcb.led[0]))
             Spacer(Modifier.width(6.dp))
             Text("PWR", color = Pcb.silkDim, fontSize = 9.sp)
+            Spacer(Modifier.width(8.dp))
+            Icon(Icons.Outlined.Info, "Hakkında", tint = Pcb.silkDim,
+                modifier = Modifier.size(30.dp).clip(CircleShape).clickable(onClick = onAbout).padding(5.dp))
         }
         Spacer(Modifier.height(4.dp))
         Text("Elektrik proje ve hesap kiti — bir çipe dokun", color = Pcb.silkDim, fontSize = 11.sp, maxLines = 1)
@@ -400,4 +408,32 @@ private fun ModuleChip(i: Int, r: Route, lit: Boolean, onPress: (Boolean) -> Uni
             overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
         Text("MK-${"%02d".format(i + 1)}-${r.name.take(4)}", color = if (white) Color(0xFF6A7689) else Color(0xFF5C6B82), fontSize = 9.sp, letterSpacing = 1.5.sp)
     }
+}
+
+
+const val PRIVACY_URL = "https://makife.github.io/muhenkit/gizlilik.html"
+
+/** Hakkında: sürüm, sorumluluk notu, gizlilik */
+@Composable
+fun AboutDialog(onDismiss: () -> Unit) {
+    val context = LocalContext.current
+    val uri = LocalUriHandler.current
+    val version = remember {
+        runCatching { context.packageManager.getPackageInfo(context.packageName, 0).versionName }.getOrNull() ?: ""
+    }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        icon = { AppLogo(40.dp) },
+        title = { Text("MühenKit Elektrik") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text("Sürüm $version", fontWeight = FontWeight.SemiBold)
+                Text("Elektrik proje çizimi (DXF) ve mühendislik hesapları. İnternet gerektirmez; projeleriniz yalnızca bu cihazda saklanır, kişisel veri toplanmaz.")
+                Text("Sorumluluk notu: Hesaplar ve tablolar ön tasarım ve kontrol amaçlıdır. Projenin yönetmeliklere uygunluğu ve sonuçların doğruluğu projeyi hazırlayan mühendisin sorumluluğundadır.",
+                    fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        },
+        confirmButton = { TextButton(onClick = onDismiss) { Text("Kapat") } },
+        dismissButton = { TextButton(onClick = { runCatching { uri.openUri(PRIVACY_URL) } }) { Text("Gizlilik politikası") } },
+    )
 }

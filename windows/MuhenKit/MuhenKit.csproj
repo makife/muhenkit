@@ -19,6 +19,8 @@
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <ApplicationIcon>../../core/content/brand/app.ico</ApplicationIcon>
+    <Version>2.0.0</Version>
+    <Product>MühenKit Elektrik</Product>
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="Microsoft.WindowsAppSDK" Version="2.4.0" />

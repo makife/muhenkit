@@ -3,6 +3,7 @@ import SwiftUI
 /// Ana sayfa: üstte çizim ve projeler (büyük kartlar), altta hesap modülleri
 struct HomeView: View {
     @EnvironmentObject private var nav: AppNav
+    @State private var showAbout = false
 
     private var main: [RouteInfo] { Routes.all.filter { $0.id == .cad || $0.id == .projects } }
     private var modules: [RouteInfo] { Routes.all.filter { $0.id != .cad && $0.id != .projects } }
@@ -28,6 +29,7 @@ struct HomeView: View {
             .frame(maxWidth: .infinity)
         }
         .background(background.ignoresSafeArea())
+        .sheet(isPresented: $showAbout) { AboutView() }
         #if os(iOS)
         .navigationBarHidden(true)
         #endif
@@ -45,6 +47,12 @@ struct HomeView: View {
                 Text("MühenKit").font(.system(size: 30, weight: .bold))
                 Text("Elektrik proje çizimi ve hesapları").foregroundStyle(Theme.muted)
             }
+            Spacer()
+            Button { showAbout = true } label: {
+                Image(systemName: "info.circle").font(.title2).foregroundStyle(Theme.muted)
+            }
+            .buttonStyle(.plain)
+            .help("Hakkında")
         }
         .padding(.top, 12)
     }
@@ -100,5 +108,46 @@ private struct ModuleCard: View {
         .background(Theme.card, in: RoundedRectangle(cornerRadius: 14))
         .overlay(RoundedRectangle(cornerRadius: 14).stroke(Theme.line))
         .contentShape(Rectangle())
+    }
+}
+
+
+/// Hakkında: sürüm, sorumluluk notu, gizlilik
+struct AboutView: View {
+    static let privacyURL = URL(string: "https://makife.github.io/muhenkit/gizlilik.html")!
+    @Environment(\.dismiss) private var dismiss
+
+    private var version: String {
+        let i = Bundle.main.infoDictionary
+        return "\(i?["CFBundleShortVersionString"] as? String ?? "") (\(i?["CFBundleVersion"] as? String ?? ""))"
+    }
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 14) {
+                    HStack(spacing: 12) {
+                        Image(systemName: "bolt.fill").font(.title).foregroundStyle(Theme.page)
+                            .frame(width: 52, height: 52)
+                            .background(LinearGradient(colors: [Theme.gold, Theme.accent], startPoint: .topLeading, endPoint: .bottomTrailing),
+                                        in: RoundedRectangle(cornerRadius: 12))
+                        VStack(alignment: .leading) {
+                            Text("MühenKit Elektrik").font(.title2.weight(.bold))
+                            Text("Sürüm \(version)").foregroundStyle(Theme.muted)
+                        }
+                    }
+                    Text("Elektrik proje çizimi (DXF) ve mühendislik hesapları. İnternet gerektirmez; projeleriniz yalnızca bu cihazda saklanır, kişisel veri toplanmaz.")
+                    Text("Sorumluluk notu: Hesaplar ve tablolar ön tasarım ve kontrol amaçlıdır. Projenin yönetmeliklere uygunluğu ve sonuçların doğruluğu projeyi hazırlayan mühendisin sorumluluğundadır.")
+                        .font(.footnote).foregroundStyle(Theme.muted)
+                    Link("Gizlilik politikası", destination: Self.privacyURL)
+                }
+                .padding(20)
+            }
+            .navigationTitle("Hakkında")
+            .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Kapat") { dismiss() } } }
+        }
+        #if os(macOS)
+        .frame(minWidth: 420, minHeight: 360)
+        #endif
     }
 }

@@ -249,6 +249,14 @@ public sealed partial class HomePage : Page
         var pwr = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6, HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Center };
         pwr.Children.Add(new Microsoft.UI.Xaml.Shapes.Ellipse { Width = 8, Height = 8, Fill = new SolidColorBrush(Leds[0]) });
         pwr.Children.Add(new TextBlock { Text = "PWR", FontSize = 9, Foreground = new SolidColorBrush(SilkDim) });
+        var info = new Button
+        {
+            Content = new FontIcon { Glyph = "", FontSize = 14, Foreground = new SolidColorBrush(SilkDim) },
+            Padding = new Thickness(6), Margin = new Thickness(6, 0, 0, 0), Background = new SolidColorBrush(Colors.Transparent), BorderThickness = new Thickness(0),
+        };
+        ToolTipService.SetToolTip(info, "Hakkında");
+        info.Click += (_, _) => ShowAbout();
+        pwr.Children.Add(info);
         var headRow = new Grid();
         headRow.Children.Add(head);
         headRow.Children.Add(pwr);
@@ -321,5 +329,27 @@ public sealed partial class HomePage : Page
         };
         border.Tapped += (_, _) => (Application.Current as App)?.Navigate(r.Id);
         return border;
+    }
+
+    public const string PrivacyUrl = "https://makife.github.io/muhenkit/gizlilik.html";
+
+    /// <summary>Hakkında: sürüm, sorumluluk notu, gizlilik</summary>
+    private async void ShowAbout()
+    {
+        var v = typeof(HomePage).Assembly.GetName().Version;
+        var sp = new StackPanel { Spacing = 10, MaxWidth = 460 };
+        sp.Children.Add(new TextBlock { Text = $"Sürüm {v?.Major}.{v?.Minor}.{v?.Build}", FontWeight = FontWeights.SemiBold });
+        sp.Children.Add(new TextBlock { Text = "Elektrik proje çizimi (DXF) ve mühendislik hesapları. İnternet gerektirmez; projeleriniz yalnızca bu bilgisayarda saklanır, kişisel veri toplanmaz.", TextWrapping = TextWrapping.Wrap });
+        sp.Children.Add(new TextBlock
+        {
+            Text = "Sorumluluk notu: Hesaplar ve tablolar ön tasarım ve kontrol amaçlıdır. Projenin yönetmeliklere uygunluğu ve sonuçların doğruluğu projeyi hazırlayan mühendisin sorumluluğundadır.",
+            TextWrapping = TextWrapping.Wrap, FontSize = 12.5, Foreground = new SolidColorBrush(Color.FromArgb(255, 0x9F, 0xB6, 0xDC)),
+        });
+        sp.Children.Add(new HyperlinkButton { Content = "Gizlilik politikası", NavigateUri = new Uri(PrivacyUrl), Padding = new Thickness(0) });
+        var dlg = new ContentDialog
+        {
+            XamlRoot = XamlRoot, Title = "MühenKit Elektrik", Content = sp, CloseButtonText = "Kapat", RequestedTheme = ElementTheme.Dark,
+        };
+        await dlg.ShowAsync();
     }
 }
