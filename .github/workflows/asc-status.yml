@@ -1,0 +1,23 @@
+name: App Store durumu
+
+# Teşhis: App Store Connect'teki yapıların işleme durumunu listeler (elle başlatılır)
+on:
+  workflow_dispatch:
+
+jobs:
+  status:
+    runs-on: ubuntu-latest
+    env:
+      ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+      ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+      ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
+    steps:
+      - uses: actions/checkout@v5
+      - name: Durum
+        run: |
+          export ASC_KEY_ID=$(printf '%s' "$ASC_KEY_ID" | tr -d '[:space:]') ASC_ISSUER_ID=$(printf '%s' "$ASC_ISSUER_ID" | tr -d '[:space:]')
+          export KEY="$RUNNER_TEMP/key.p8"
+          printf '%s\n' "$ASC_KEY_P8" | tr -d '\r' | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//' | grep -v '^$' > "$KEY"
+          pip install --quiet pyjwt cryptography
+          python3 .github/asc_status.py 6823229508 | tee status.log
+          echo "::notice title=Durum::$(tr '\n' '|' < status.log | cut -c1-3000)"
