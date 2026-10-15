@@ -33,7 +33,7 @@ targetTemplates:
           - $(SRCROOT)/../core/mkcalc/include
         GCC_WARN_INHIBIT_ALL_WARNINGS: YES
         GENERATE_INFOPLIST_FILE: YES
-        INFOPLIST_KEY_CFBundleDisplayName: MühenKit
+        INFOPLIST_KEY_CFBundleDisplayName: MühenKit Elektrik
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
         # standart dışı şifreleme yok: TestFlight'ta ihracat sorusu sorulmasın

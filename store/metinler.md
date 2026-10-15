@@ -1,5 +1,7 @@
 # MühenKit Elektrik — mağaza metinleri
 
+Uygulama adı dört platformda da **MühenKit Elektrik** (ü ile).
+
 Destek: makifergan@gmail.com · Gizlilik: https://makife.github.io/muhenkit/gizlilik.html · Web: https://makife.github.io/muhenkit/
 
 ## Ortak açıklama (Türkçe)
@@ -46,7 +48,7 @@ Not: Hesaplar ve tablolar ön tasarım ve kontrol amaçlıdır; projenin yönetm
 
 | Alan | Metin | Sınır |
 |---|---|---|
-| Ad | MuhenKit Elektrik | 30 |
+| Ad | MühenKit Elektrik | 30 |
 | Alt başlık | DXF çizim, elektrik hesapları | 30 (29) |
 | Tanıtım metni | AutoCAD DXF projelerinizi açın, düzenleyin, aydınlatma ve güç tablolarını ekleyip PDF alın. Yükleme cetveli, gerilim düşümü, topraklama ve daha fazlası — internetsiz. | 170 (166) |
 | Anahtar kelimeler | dxf,autocad,cad,elektrik,proje,çizim,aydınlatma,topraklama,kablo,gerilim,smm,mühendis,tesisat,pano | 100 (98) |
@@ -64,7 +66,7 @@ Mac: 1280×800 ya da 2880×1800, en az 1 adet.
 
 | Alan | Metin | Sınır |
 |---|---|---|
-| Uygulama adı | MuhenKit Elektrik | 30 |
+| Uygulama adı | MühenKit Elektrik | 30 |
 | Kısa açıklama | DXF elektrik projesi çizin, düzenleyin; aydınlatma, yük ve topraklama hesabı | 80 (76) |
 | Tam açıklama | Yukarıdaki ortak açıklama | 4000 |
 | Kategori | Uygulama · Üretkenlik (alternatif: İş) | |
@@ -83,7 +85,7 @@ telefon ekran görüntüsü en az 2 (16:9 / 9:16, kenar 320–3840 px), 7" ve 10
 
 | Alan | Metin |
 |---|---|
-| Ürün adı | MuhenKit Elektrik |
+| Ürün adı | MühenKit Elektrik |
 | Kısa açıklama | Elektrik projeleri için DXF çizim ve hesap aracı: aydınlatma, yükleme cetveli, gerilim düşümü, topraklama, PDF çıktısı. İnternet gerektirmez. |
 | Açıklama | Yukarıdaki ortak açıklama |
 | Özellikler (madde madde, en çok 20) | DXF açma, düzenleme ve kaydetme · Elektrik sembol kütüphanesi · Hizalı ölçülendirme ve hizalama izleri · Aydınlatma hesap tablosu · Toplam güç tablosu ve firma anteti · Yükleme cetveli ve faz dengeleme · Gerilim düşümü ve kablo seçimi · Topraklama ve paratoner hesabı · A4–A0 PDF çıktısı · AutoCAD tarzı komut satırı (L, PL, C, M, CO…) |

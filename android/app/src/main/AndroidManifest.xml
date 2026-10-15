@@ -2,7 +2,7 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
     <application
-        android:label="MühenKit"
+        android:label="MühenKit Elektrik"
         android:icon="@mipmap/ic_launcher"
         android:theme="@style/Theme.MuhenKit"
         android:hardwareAccelerated="true">

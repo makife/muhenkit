@@ -1,7 +1,7 @@
 <Window x:Class="MuhenKit.MainWindow"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-    Title="MühenKit">
+    Title="MühenKit Elektrik">
     <Grid x:Name="Root" RequestedTheme="Dark" Background="#0B0E10">
         <Frame x:Name="Nav"/>
     </Grid>
