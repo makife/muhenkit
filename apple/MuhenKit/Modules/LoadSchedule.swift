@@ -22,7 +22,9 @@ struct LoadScheduleModule: View {
     @State private var three = true
     @State private var demandMode = 0
     @State private var demandFactor = "0.6"
-    @State private var kolonL = "15", limit = "1.5", cos = "0.8"
+    @State private var kolonL = "15"
+    @State private var limit = "1.5"
+    @State private var cos = "0.8"
 
     private func input(_ balance: Bool) -> [(String, Any?)] {
         var m: [(String, Any?)] = [("three", three), ("demand_mode", demandMode), ("demand_factor", demandFactor), ("kolon_l", kolonL),

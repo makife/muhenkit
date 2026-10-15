@@ -1,4 +1,5 @@
 import Foundation
+import CoreGraphics
 
 struct CadLayer {
     let name: String

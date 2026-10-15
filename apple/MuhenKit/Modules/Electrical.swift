@@ -5,7 +5,12 @@ private let fmt = Calc.fmt
 // ───────────────────────── Aydınlatma (verim metodu) ─────────────────────────
 
 struct LightingModule: View {
-    @State private var a = "6", b = "4", h = "3", work = "0.85", susp = "0", lux = "300"
+    @State private var a = "6"
+    @State private var b = "4"
+    @State private var h = "3"
+    @State private var work = "0.85"
+    @State private var susp = "0"
+    @State private var lux = "300"
     @State private var combo = 0
     @State private var soil = 1.25
     @State private var lum = 3600.0
@@ -72,8 +77,12 @@ struct LightingModule: View {
 private let sections: [Double] = [1.5, 2.5, 4, 6, 10, 16, 25, 35, 50, 70, 95, 120, 150, 185, 240, 300]
 
 struct VoltageDropModule: View {
-    @State private var three = true, cu = true
-    @State private var p = "11008", l = "30", limit = "1.5", cos = "0.8"
+    @State private var three = true
+    @State private var cu = true
+    @State private var p = "11008"
+    @State private var l = "30"
+    @State private var limit = "1.5"
+    @State private var cos = "0.8"
     @State private var s = 10.0
 
     var body: some View {
@@ -107,7 +116,11 @@ struct VoltageDropModule: View {
 // ───────────────────────── Eşzamanlılık ─────────────────────────
 
 struct DiversityModule: View {
-    @State private var flatW = "16000", flats = "12", common = "6000", cf = "1", cos = "0.8"
+    @State private var flatW = "16000"
+    @State private var flats = "12"
+    @State private var common = "6000"
+    @State private var cf = "1"
+    @State private var cos = "0.8"
     private let rows = Calc.table("diversity").dropFirst().map { t in [t[1] == "99999" ? "\(t[0]) ve üstü" : "\(t[0]) – \(t[1])", "%" + t[2]] }
 
     var body: some View {
@@ -140,7 +153,8 @@ struct DiversityModule: View {
 // ───────────────────────── Kablo seçimi ─────────────────────────
 
 struct CableModule: View {
-    @State private var amps = "45", factor = "1"
+    @State private var amps = "45"
+    @State private var factor = "1"
     @State private var mode = 0
     private let cables = Calc.table("cables").dropFirst().map { [$0[0], $0[2], $0[3], $0[4], $0[5]] }
     private let nyy = Calc.table("nyy").dropFirst().map { Array($0.prefix(5)) }
@@ -177,7 +191,9 @@ struct CableModule: View {
 // ───────────────────────── Motor & TMŞ ─────────────────────────
 
 struct MotorModule: View {
-    @State private var kw = "7.5", cos = "0.85", eff = "0.88"
+    @State private var kw = "7.5"
+    @State private var cos = "0.85"
+    @State private var eff = "0.88"
     private let rows = Calc.table("motor").dropFirst().map { Array($0.prefix(8)) }
 
     var body: some View {

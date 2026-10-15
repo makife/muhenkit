@@ -6,15 +6,25 @@ private let fmt = Calc.fmt
 
 struct GroundingModule: View {
     @State private var rho = "100"
-    @State private var useStrip = true, useRod = true, useFound = true, useMesh = false
-    @State private var stripL = "106", stripH = "1"
+    @State private var useStrip = true
+    @State private var useRod = true
+    @State private var useFound = true
+    @State private var useMesh = false
+    @State private var stripL = "106"
+    @State private var stripH = "1"
     @State private var stripD = 0.008
-    @State private var rodL = "1.75", rodD = "0.02", rodN = "8"
-    @State private var fa = "17", fb = "28", meshL = "170"
-    @State private var ia = "25", ul = "50"
+    @State private var rodL = "1.75"
+    @State private var rodD = "0.02"
+    @State private var rodN = "8"
+    @State private var fa = "17"
+    @State private var fb = "28"
+    @State private var meshL = "170"
+    @State private var ia = "25"
+    @State private var ul = "50"
     @State private var wr = ["", "", "", ""]
     @State private var season = "2"
-    @State private var ika = "10", t = "1"
+    @State private var ika = "10"
+    @State private var t = "1"
     private let conductors = Calc.named("conductors")
     private let aList = ["1", "2", "4", "6"]
 
@@ -82,8 +92,16 @@ struct GroundingModule: View {
 // ───────────────────────── Paratoner ─────────────────────────
 
 struct LightningModule: View {
-    @State private var l = "26", w = "21", h = "30", nk = "20", mast = "6"
-    @State private var c1 = 0.25, c2 = 1.0, c3 = 0.5, c4 = 1.0, c5 = 5.0
+    @State private var l = "26"
+    @State private var w = "21"
+    @State private var h = "30"
+    @State private var nk = "20"
+    @State private var mast = "6"
+    @State private var c1 = 0.25
+    @State private var c2 = 1.0
+    @State private var c3 = 0.5
+    @State private var c4 = 1.0
+    @State private var c5 = 5.0
     @State private var level = 0
     @State private var dt = 60
     private let levelText = ["Otomatik", "Seviye 1", "Seviye 2", "Seviye 3", "Seviye 4"]
