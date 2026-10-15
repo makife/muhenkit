@@ -45,7 +45,7 @@ targets:
     settings:
       base:
         # App Store Connect'teki kayıtla aynı olmalı
-        PRODUCT_BUNDLE_IDENTIFIER: com.makife.muhenkit
+        PRODUCT_BUNDLE_IDENTIFIER: com.ergan.muhenkitelektrik
         TARGETED_DEVICE_FAMILY: "1,2"
         INFOPLIST_KEY_UILaunchScreen_Generation: YES
         INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone: "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight"
@@ -57,5 +57,5 @@ targets:
     platform: macOS
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.makife.muhenkit.mac
+        PRODUCT_BUNDLE_IDENTIFIER: com.ergan.muhenkitelektrik.mac
         INFOPLIST_KEY_LSApplicationCategoryType: public.app-category.productivity
