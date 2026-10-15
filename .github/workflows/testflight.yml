@@ -39,7 +39,9 @@ jobs:
           # yükleme araçları anahtarı ~/private_keys altında arar
           mkdir -p ~/private_keys
           export KEY="$HOME/private_keys/AuthKey_$ASC_KEY_ID.p8"
-          printf '%s\n' "$ASC_KEY_P8" > "$KEY"
+          # Windows'tan yapıştırılmış olabilir: \r ve satır başı/sonu boşluklarını temizle, PEM biçimini koru
+          printf '%s\n' "$ASC_KEY_P8" | tr -d '\r' | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//' | grep -v '^$' > "$KEY"
+          head -1 "$KEY"; tail -1 "$KEY"; echo "anahtar satır sayısı: $(wc -l < "$KEY")"
           AUTH=(-allowProvisioningUpdates -authenticationKeyPath "$KEY" -authenticationKeyID "$ASC_KEY_ID" -authenticationKeyIssuerID "$ASC_ISSUER_ID")
           xcodebuild -project MuhenKit.xcodeproj -scheme MuhenKit-iOS -configuration Release \
             -destination 'generic/platform=iOS' -archivePath build/MuhenKit.xcarchive \
