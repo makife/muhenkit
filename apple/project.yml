@@ -36,13 +36,16 @@ targetTemplates:
         INFOPLIST_KEY_CFBundleDisplayName: MühenKit
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
+        # standart dışı şifreleme yok: TestFlight'ta ihracat sorusu sorulmasın
+        INFOPLIST_KEY_ITSAppUsesNonExemptEncryption: NO
 targets:
   MuhenKit-iOS:
     templates: [App]
     platform: iOS
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.muhenkit.app
+        # App Store Connect'teki kayıtla aynı olmalı
+        PRODUCT_BUNDLE_IDENTIFIER: com.makife.muhenkit
         TARGETED_DEVICE_FAMILY: "1,2"
         INFOPLIST_KEY_UILaunchScreen_Generation: YES
         INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone: "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight"
@@ -54,5 +57,5 @@ targets:
     platform: macOS
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.muhenkit.mac
+        PRODUCT_BUNDLE_IDENTIFIER: com.makife.muhenkit.mac
         INFOPLIST_KEY_LSApplicationCategoryType: public.app-category.productivity

@@ -1,0 +1,57 @@
+name: TestFlight
+
+# iOS sürümünü imzalayıp App Store Connect'e (TestFlight) yükler.
+# Gereken depo gizlileri (Settings → Secrets and variables → Actions):
+#   ASC_KEY_ID, ASC_ISSUER_ID, ASC_KEY_P8 (AuthKey_XXXX.p8 dosyasının içeriği), APPLE_TEAM_ID
+on:
+  push:
+    branches: [main]
+    paths: ["apple/**", "core/**", ".github/workflows/testflight.yml"]
+  workflow_dispatch:
+
+jobs:
+  upload:
+    runs-on: macos-15
+    env:
+      ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+      ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+      ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
+      TEAM: ${{ secrets.APPLE_TEAM_ID }}
+    steps:
+      - name: Gizliler var mı
+        id: check
+        run: |
+          if [ -n "$ASC_KEY_ID" ] && [ -n "$ASC_ISSUER_ID" ] && [ -n "$ASC_KEY_P8" ] && [ -n "$TEAM" ]; then
+            echo "ok=1" >> "$GITHUB_OUTPUT"
+          else
+            echo "::notice::TestFlight gizlileri henüz eklenmedi; yükleme atlandı."
+          fi
+      - uses: actions/checkout@v5
+        if: steps.check.outputs.ok == '1'
+      - name: Arşivle ve yükle
+        if: steps.check.outputs.ok == '1'
+        working-directory: apple
+        run: |
+          brew install xcodegen
+          xcodegen generate
+          KEY="$RUNNER_TEMP/AuthKey_$ASC_KEY_ID.p8"
+          printf '%s\n' "$ASC_KEY_P8" > "$KEY"
+          AUTH=(-allowProvisioningUpdates -authenticationKeyPath "$KEY" -authenticationKeyID "$ASC_KEY_ID" -authenticationKeyIssuerID "$ASC_ISSUER_ID")
+          xcodebuild -project MuhenKit.xcodeproj -scheme MuhenKit-iOS -configuration Release \
+            -destination 'generic/platform=iOS' -archivePath build/MuhenKit.xcarchive \
+            DEVELOPMENT_TEAM="$TEAM" CODE_SIGN_STYLE=Automatic CURRENT_PROJECT_VERSION="$GITHUB_RUN_NUMBER" \
+            "${AUTH[@]}" archive > archive.log 2>&1 || { bash ../.github/report.sh archive.log; exit 1; }
+          cat > ExportOptions.plist <<PLIST
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0"><dict>
+            <key>method</key><string>app-store-connect</string>
+            <key>destination</key><string>upload</string>
+            <key>teamID</key><string>$TEAM</string>
+            <key>signingStyle</key><string>automatic</string>
+            <key>manageAppVersionAndBuildNumber</key><false/>
+          </dict></plist>
+          PLIST
+          xcodebuild -exportArchive -archivePath build/MuhenKit.xcarchive -exportOptionsPlist ExportOptions.plist \
+            -exportPath build/export "${AUTH[@]}" > export.log 2>&1 || { bash ../.github/report.sh export.log; exit 1; }
+          echo "::notice::Yüklendi: yapı $GITHUB_RUN_NUMBER. App Store Connect işledikten sonra (5-15 dk) TestFlight'ta görünür."
