@@ -1,7 +1,19 @@
 #!/usr/bin/env bash
 # Derleme hatalarını GitHub "annotation" olarak yayınlar (günlük indirmeden okunabilsin)
 LOG="$1"
-ERR=$(grep -E "error:|fatal error|Undefined symbol|ld: " "$LOG" | sed "s#$PWD/##g" | sort -u | head -40)
-[ -z "$ERR" ] && ERR=$(tail -40 "$LOG")
-echo "$ERR"
-echo "::error title=Derleme hatasi::$(echo "$ERR" | sed ':a;N;$!ba;s/%/%25/g;s/\n/%0A/g')"
+python3 - "$LOG" "$PWD" <<'PY'
+import sys, re
+log, cwd = sys.argv[1], sys.argv[2]
+lines = open(log, errors="replace").read().splitlines()
+keep = []
+for i, l in enumerate(lines):
+    if re.search(r"error:|fatal error|Undefined symbol|ld: |\*\* BUILD FAILED", l):
+        s = l.replace(cwd + "/", "").strip()
+        if s not in keep:
+            keep.append(s)
+if not keep:
+    keep = lines[-40:]
+msg = "\n".join(keep[:40])
+print(msg)
+print("::error title=Derleme hatasi::" + msg.replace("%", "%25").replace("\r", "").replace("\n", "%0A"))
+PY

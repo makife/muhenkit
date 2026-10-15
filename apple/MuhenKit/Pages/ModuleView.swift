@@ -1,19 +1,25 @@
 import SwiftUI
 
-/// Hesap modülü ekranı (modüller sırayla taşınıyor)
+/// Ana sayfa kartı → modül ekranı
 struct ModuleView: View {
     let route: RouteId
 
     var body: some View {
-        let info = Routes.info(route)
-        VStack(spacing: 14) {
-            Image(systemName: info.symbol).font(.system(size: 48)).foregroundStyle(Theme.accent)
-            Text(info.title).font(.title2.weight(.semibold))
-            Text(info.subtitle).foregroundStyle(Theme.muted)
-            Text("Hesap çekirdeği: \(Calc.table("cables").count > 1 ? "hazır" : "yüklenemedi")").font(.caption).foregroundStyle(.secondary)
+        switch route {
+        case .lighting: LightingModule()
+        case .load: LoadScheduleModule()
+        case .drop: VoltageDropModule()
+        case .diversity: DiversityModule()
+        case .grounding: GroundingModule()
+        case .lightning: LightningModule()
+        case .motor: MotorModule()
+        case .cable: CableModule()
+        case .meter: MeterModule()
+        case .lux: LuxModule()
+        case .materials: MaterialsModule()
+        case .weak: WeakModule()
+        case .smm: SmmModule()
+        case .cad, .projects: EmptyView()
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Theme.page)
-        .navigationTitle(info.title)
     }
 }
