@@ -27,7 +27,7 @@ jobs:
           xcodebuild -project MuhenKit.xcodeproj -scheme MuhenKit-macOS -configuration Release \
             -derivedDataPath build -destination 'generic/platform=macOS' \
             CODE_SIGN_IDENTITY=- CODE_SIGNING_REQUIRED=NO build > mac.log 2>&1 || { bash ../.github/report.sh mac.log; exit 1; }
-          ditto -c -k --keepParent build/Build/Products/Release/MuhenKit.app MuhenKit-macOS.zip
+          ditto -c -k --keepParent "build/Build/Products/Release/MühenKit Elektrik.app" MuhenKit-macOS.zip
       - name: iOS (imzasiz derleme denetimi)
         working-directory: apple
         run: |

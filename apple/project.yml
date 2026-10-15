@@ -58,6 +58,9 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.ergan.muhenkitelektrik.mac
+        # Mac'te uygulama paketinin adı Finder'da ve menü çubuğunda görünür; Swift modül adı ASCII kalsın
+        PRODUCT_NAME: MühenKit Elektrik
+        PRODUCT_MODULE_NAME: MuhenKit
         CODE_SIGN_ENTITLEMENTS: MuhenKit/MuhenKit-macOS.entitlements
         ENABLE_HARDENED_RUNTIME: YES
         INFOPLIST_KEY_LSApplicationCategoryType: public.app-category.productivity
