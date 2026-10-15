@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- MühenKit simgesi: beyaz M ve ortasından geçen sarı şimşek. Uyarlanır simge güvenli
+     alanı (66 dp daire) için %90 küçültülmüş. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <group android:scaleX="0.9" android:scaleY="0.9" android:pivotX="54" android:pivotY="54">
+        <path
+            android:fillColor="#FFFFFFFF"
+            android:pathData="M28,76 L28,32 L40,32 L54,52 L68,32 L80,32 L80,76 L69,76 L69,50 L54,71 L39,50 L39,76 Z" />
+        <path
+            android:fillColor="#FFFFC107"
+            android:strokeColor="#FF0A2C7A"
+            android:strokeWidth="2"
+            android:strokeLineJoin="round"
+            android:pathData="M61,22 L45,53 L55,53 L48,87 L67,47 L57,47 L65,22 Z" />
+    </group>
+</vector>

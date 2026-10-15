@@ -1,0 +1,179 @@
+<Page x:Class="MuhenKit.Pages.CadPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:cad="using:MuhenKit.Cad"
+    Background="#0B0E10">
+    <Page.Resources>
+        <Style x:Key="ToolButton" TargetType="ToggleButton" BasedOn="{StaticResource DefaultToggleButtonStyle}">
+            <Setter Property="Width" Value="40"/>
+            <Setter Property="Height" Value="38"/>
+            <Setter Property="Padding" Value="0"/>
+            <Setter Property="Margin" Value="4,2"/>
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="BorderThickness" Value="0"/>
+        </Style>
+        <Style x:Key="PanelHeader" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="#F2B266"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Margin" Value="0,10,0,4"/>
+        </Style>
+        <Style x:Key="StatusToggle" TargetType="ToggleButton" BasedOn="{StaticResource DefaultToggleButtonStyle}">
+            <Setter Property="FontSize" Value="11"/>
+            <Setter Property="Padding" Value="8,1"/>
+            <Setter Property="MinHeight" Value="22"/>
+            <Setter Property="Height" Value="24"/>
+            <Setter Property="CharacterSpacing" Value="60"/>
+        </Style>
+    </Page.Resources>
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="Auto"/>
+            <ColumnDefinition Width="*"/>
+            <ColumnDefinition Width="Auto"/>
+        </Grid.ColumnDefinitions>
+
+        <!-- Şerit: sekmeler + komutlar -->
+        <Grid Grid.Row="0" Grid.ColumnSpan="3" Background="#141719" BorderBrush="#2A2F33" BorderThickness="0,0,0,1">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+            </Grid.RowDefinitions>
+            <StackPanel Orientation="Horizontal" Padding="8,4,8,0" Spacing="4">
+                <Button Click="OnHome" Style="{StaticResource SubtleButtonStyle}" ToolTipService.ToolTip="Ana sayfa">
+                    <FontIcon Glyph="&#xE80F;" FontSize="16"/>
+                </Button>
+                <SelectorBar x:Name="Tabs" SelectionChanged="OnTabChanged">
+                    <SelectorBarItem Text="Dosya" IsSelected="True"/>
+                    <SelectorBarItem Text="Çiz"/>
+                    <SelectorBarItem Text="Düzenle"/>
+                    <SelectorBarItem Text="Ekle"/>
+                    <SelectorBarItem Text="Görünüm"/>
+                </SelectorBar>
+                <TextBlock x:Name="TitleText" VerticalAlignment="Center" Margin="16,0,0,0" Foreground="#9FB6DC" Text="DXF Çizim"/>
+            </StackPanel>
+            <CommandBar x:Name="Commands" Grid.Row="1" DefaultLabelPosition="Right" HorizontalAlignment="Left" Background="Transparent" IsDynamicOverflowEnabled="True"/>
+        </Grid>
+
+        <!-- Sol araç çubuğu -->
+        <ScrollViewer Grid.Row="1" Grid.Column="0" Background="#141719" BorderBrush="#2A2F33" BorderThickness="0,0,1,0" VerticalScrollBarVisibility="Auto">
+            <StackPanel x:Name="ToolStrip" Padding="0,6"/>
+        </ScrollViewer>
+
+        <!-- Tuval -->
+        <cad:CadCanvas x:Name="Canvas" Grid.Row="1" Grid.Column="1"/>
+        <Border x:Name="LiveBadge" Grid.Row="1" Grid.Column="1" HorizontalAlignment="Left" VerticalAlignment="Top" Margin="12" Padding="10,5"
+                CornerRadius="6" Background="#CC141719" BorderBrush="#2A2F33" BorderThickness="1" Visibility="Collapsed" IsHitTestVisible="False">
+            <TextBlock x:Name="LiveText" Foreground="#3DFF8E" FontFamily="Consolas"/>
+        </Border>
+        <InfoBar x:Name="Toast" Grid.Row="1" Grid.Column="1" HorizontalAlignment="Center" VerticalAlignment="Top" Margin="12" MaxWidth="560" IsClosable="True"/>
+        <StackPanel x:Name="EmptyState" Grid.Row="1" Grid.Column="1" HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="12">
+            <FontIcon Glyph="&#xE8A5;" FontSize="48" Foreground="#F2B266"/>
+            <TextBlock x:Name="EmptyText" TextAlignment="Center" Foreground="#9FB6DC" TextWrapping="Wrap" MaxWidth="420"
+                       Text="Bir DXF dosyası açın ya da boş bir proje başlatın."/>
+            <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Center">
+                <Button Content="DXF aç" Click="OnOpen" Style="{StaticResource AccentButtonStyle}"/>
+                <Button Content="Boş proje" Click="OnNew"/>
+            </StackPanel>
+        </StackPanel>
+        <ProgressRing x:Name="Busy" Grid.Row="1" Grid.Column="1" IsActive="False" Width="48" Height="48"/>
+
+        <!-- Sağ panel -->
+        <Grid x:Name="RightPanel" Grid.Row="1" Grid.Column="2" Width="300" Background="#141719" BorderBrush="#2A2F33" BorderThickness="1,0,0,0">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="*"/>
+            </Grid.RowDefinitions>
+            <SelectorBar x:Name="PanelTabs" SelectionChanged="OnPanelTabChanged" Margin="4,2,4,0">
+                <SelectorBarItem Text="Özellikler" IsSelected="True"/>
+                <SelectorBarItem Text="Katmanlar"/>
+                <SelectorBarItem Text="Semboller"/>
+            </SelectorBar>
+
+            <!-- Özellikler -->
+            <ScrollViewer x:Name="PropsPane" Grid.Row="1" Padding="14,0,14,14">
+                <StackPanel Spacing="6">
+                    <TextBlock Text="Seçim" Style="{StaticResource PanelHeader}"/>
+                    <TextBlock x:Name="SelText" Text="Seçim yok" TextWrapping="Wrap" Foreground="#9FB6DC"/>
+                    <StackPanel x:Name="SelProps" Spacing="6" Visibility="Collapsed">
+                        <ComboBox x:Name="SelLayer" Header="Katman" HorizontalAlignment="Stretch" SelectionChanged="OnSelLayer"/>
+                        <TextBlock Text="Renk" Margin="0,4,0,0"/>
+                        <VariableSizedWrapGrid x:Name="ColorGrid" Orientation="Horizontal" ItemWidth="30" ItemHeight="30" MaximumRowsOrColumns="8"/>
+                        <StackPanel x:Name="TextEdit" Spacing="6" Visibility="Collapsed">
+                            <TextBox x:Name="SelTextBox" Header="Yazı" AcceptsReturn="True" TextWrapping="Wrap"/>
+                            <Button Content="Yazıyı güncelle" Click="OnApplyText"/>
+                        </StackPanel>
+                        <StackPanel Orientation="Horizontal" Spacing="6" Margin="0,6,0,0">
+                            <Button Click="OnGroup" ToolTipService.ToolTip="Grupla (G)"><StackPanel Orientation="Horizontal" Spacing="6"><FontIcon Glyph="&#xE71B;" FontSize="14"/><TextBlock Text="Grupla"/></StackPanel></Button>
+                            <Button Click="OnExplode" ToolTipService.ToolTip="Çöz (X)"><StackPanel Orientation="Horizontal" Spacing="6"><FontIcon Glyph="&#xF5ED;" FontSize="14"/><TextBlock Text="Çöz"/></StackPanel></Button>
+                            <Button Click="OnDelete" ToolTipService.ToolTip="Sil (Del)"><FontIcon Glyph="&#xE74D;" FontSize="14"/></Button>
+                        </StackPanel>
+                    </StackPanel>
+
+                    <TextBlock Text="Çizim ayarları" Style="{StaticResource PanelHeader}"/>
+                    <ComboBox x:Name="ActiveLayer" Header="Etkin katman (yeni nesneler)" HorizontalAlignment="Stretch" SelectionChanged="OnActiveLayer"/>
+                    <NumberBox x:Name="TextHeightBox" Header="Yazı yüksekliği" SpinButtonPlacementMode="Compact" Minimum="0.01" SmallChange="0.5" ValueChanged="OnTextHeight"/>
+                    <NumberBox x:Name="OffsetBox" Header="Öteleme uzaklığı" SpinButtonPlacementMode="Compact" Minimum="0.001" SmallChange="1" ValueChanged="OnOffsetDist"/>
+                    <NumberBox x:Name="SymScaleBox" Header="Sembol ölçeği" SpinButtonPlacementMode="Compact" Minimum="0.001" SmallChange="0.1" ValueChanged="OnSymScale"/>
+                    <NumberBox x:Name="SymRotBox" Header="Sembol açısı (°)" SpinButtonPlacementMode="Compact" SmallChange="90" ValueChanged="OnSymRot"/>
+                    <ToggleSwitch x:Name="MirrorKeepSwitch" Header="Aynada orijinal kalsın" IsOn="True" Toggled="OnMirrorKeep"/>
+                </StackPanel>
+            </ScrollViewer>
+
+            <!-- Katmanlar -->
+            <Grid x:Name="LayersPane" Grid.Row="1" Visibility="Collapsed">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="*"/>
+                </Grid.RowDefinitions>
+                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Padding="8,4">
+                    <HyperlinkButton Content="Tümü" Click="OnLayersAll" Padding="6,2"/>
+                    <HyperlinkButton Content="Hiçbiri" Click="OnLayersNone" Padding="6,2"/>
+                </StackPanel>
+                <ListView x:Name="LayerList" Grid.Row="1" SelectionMode="None" Padding="0,0,0,12"/>
+            </Grid>
+
+            <!-- Semboller -->
+            <Grid x:Name="SymbolsPane" Grid.Row="1" Visibility="Collapsed">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="*"/>
+                </Grid.RowDefinitions>
+                <TextBox x:Name="SymbolSearch" PlaceholderText="Sembol ara…" Margin="10,8" TextChanged="OnSymbolSearch"/>
+                <ScrollViewer Grid.Row="1" Padding="10,0,10,12">
+                    <StackPanel x:Name="SymbolList" Spacing="2"/>
+                </ScrollViewer>
+            </Grid>
+        </Grid>
+
+        <!-- Durum / komut satırı -->
+        <Grid Grid.Row="2" Grid.ColumnSpan="3" Background="#101316" Padding="10,4" ColumnSpacing="14" BorderBrush="#2A2F33" BorderThickness="0,1,0,0">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
+            <TextBlock x:Name="CoordText" Foreground="#9FB6DC" FontFamily="Consolas" Text="X —  Y —" VerticalAlignment="Center" MinWidth="250"/>
+            <Grid Grid.Column="1" ColumnSpacing="10">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="*"/>
+                </Grid.ColumnDefinitions>
+                <TextBox x:Name="CommandBox" Width="220" PlaceholderText="Komut (L, PL, C, M, CO…) / değer" FontFamily="Consolas" KeyDown="OnCommandKey"/>
+                <TextBlock x:Name="HintText" Grid.Column="1" Foreground="#C9D4E5" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
+            </Grid>
+            <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
+                <ToggleButton x:Name="SnapToggle" Content="YAKALA" Style="{StaticResource StatusToggle}" IsChecked="True" Click="OnModeToggle" ToolTipService.ToolTip="Nesne yakalama: uç, orta, merkez, ekleme (F3)"/>
+                <ToggleButton x:Name="OrthoToggle" Content="ORTO" Style="{StaticResource StatusToggle}" Click="OnModeToggle" ToolTipService.ToolTip="Yalnızca yatay/dikey (F8)"/>
+                <ToggleButton x:Name="TrackToggle" Content="İZ" Style="{StaticResource StatusToggle}" IsChecked="True" Click="OnModeToggle" ToolTipService.ToolTip="Hizalama izleri: yakalama noktalarından yatay/dikey, referans çizgiye paralel/dik kesikli kılavuzlar ve eşit uzunluk (F11)"/>
+                <ToggleButton x:Name="PolarToggle" Content="AÇI 15°" Style="{StaticResource StatusToggle}" IsChecked="True" Click="OnModeToggle" ToolTipService.ToolTip="15°'nin katlarına yapış (F10)"/>
+            </StackPanel>
+            <TextBlock x:Name="InfoText" Grid.Column="3" Foreground="#7F93B3" VerticalAlignment="Center" FontSize="12"/>
+        </Grid>
+    </Grid>
+</Page>

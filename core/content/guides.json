@@ -1,0 +1,65 @@
+{
+  "_kaynak": "Eski uygulamanın smm_screen.dart ve weak_current_screen.dart içeriği; kaynak dokümanlar: SMM OLMAK İÇİN YAPMAK GEREKEN İŞLEMLER.docx, smm için gerekli evraklar.pdf, SERBEST MÜHENDİS MÜŞAVİRLERİN YAPTIKLARI İŞLER.pptx, yeni uygulama.jpg",
+  "smm": {
+    "title": "SMM Rehberi",
+    "subtitle": "Serbest Müşavir Mühendis olma yol haritası · evraklar · iş kolları",
+    "steps": [
+      ["SMM eğitimine katılmak (MİSEM)", 390],
+      ["Muhasebeciye gidip ofis açma (vergi mükellefi olma)", 500],
+      ["Mühendisler odasına SMM ofisi kaydı için başvuru", 2316],
+      ["SMM ve büro tescille dağıtım şirketine başvuru (proje müellifi kaydı)", 0],
+      ["SMM ve büro tescille Çevre Şehircilik’e başvuru (UYDS proje müellifi kaydı)", 0]
+    ],
+    "costNote": "Tutarlar kaynak dokümandaki değerlerdir; güncel ücretleri EMO şubenizden teyit edin.",
+    "docs": [
+      "MİSEM eğitimine katılmış olmak (Elektrik SMM eğitimi)",
+      "Elektrik-Elektronik Mühendisleri için transkript inceleme sonucu (1 kV üstü / altı belge)",
+      "SMM-BT başvuru formunu eksiksiz doldurmak",
+      "Taahhütname",
+      "Bağkur kaydı – e-Devlet SGK tescil ve hizmet dökümü (barkodlu)",
+      "SMM-BT belge ücretleri ve aidatların ödendiğine dair belge",
+      "Vergi levhası fotokopisi",
+      "Vergi dairesinden yazı YA DA son dönem KDV / muhtasar tahakkuk fişi",
+      "SMM’ye ait imza beyannamesinin aslı",
+      "İş yeri kira kontratı ya da tapu fotokopisi"
+    ],
+    "companyExtra": [
+      "Ticaret Sicil Gazetesi",
+      "2018’den önce kurulmuş şirketler için güncel hisse durumunu gösteren Ticaret Sicil Gazetesi",
+      "TMMOB üyesi ortakların üyelik belgelerinin asılları",
+      "Ücretli çalışan için: noter onaylı ücret sözleşmesinin aslı, SGK işe giriş bildirgesi"
+    ],
+    "jobs": [
+      ["AG proje çizimi", "Ruhsat, mevcut bina, şantiye, tarımsal sulama projeleri; sıfır abonelik, ek bağlantı ve güç artışı projeleri."],
+      ["Dosya takibi (abonelik işlemi)", "Aynı proje türleri için dağıtım şirketinde abonelik dosyası takibi."],
+      ["YG proje çizimi ve dosya takibi", "Trafo tesisleri – sektörün en kazançlı iş kolu."],
+      ["Topraklama ölçüm ve raporlama", "Petroller, fabrikalar, kamu kurumları, özel vakıflar, okullar."],
+      ["YG işletme sorumluluğu", "Tarımsal sulama trafoları (50 adet), trafo binası (5 adet)."],
+      ["Şantiye şefliği", "5 adet şantiye şefliği alınabilir; SMM şartı yok, oda ve UYDS kaydı yeterli."],
+      ["Enerji Kimlik Belgesi uzmanlığı (EKB)", "EKB uzmanlık belgesine sahip olmak gerekir."]
+    ],
+    "forms": [
+      ["Dağıtım şirketi SMM kayıt formu", "Ad, soyad, elektrikçi muhatap no, adres, e-posta, telefon, TC kimlik no; bilgilerin EDAŞ iletişim platformlarında yayınlanmasına onay."],
+      ["EMO SMM-BT başvuru formu", "SMM bilgileri, büro tescil (BT) bilgileri, büronun adı/ünvanı, ortaklar, telefon, vergi dairesi/no, kaşe-imza."],
+      ["Taahhütname", "6235 sayılı TMMOB Yasası, EMO Ana Yönetmeliği, En Az Ücret, SMM, TUS, Tesisat Denetleme, YG İşletme Sorumluluğu ve MİSEM yönetmeliklerine uyma taahhüdü."]
+    ]
+  },
+  "weak": {
+    "title": "Zayıf Akım / Fiber",
+    "subtitle": "Yeni uygulama: bina fiber altyapısı, OBK, splitter, zayıf akım panosu ve RJ45",
+    "fiberSteps": [
+      "TT menholden bina fiderine HDPE Ø90 boru ile giriş",
+      "Bina girişinde fiber terminasyon cihazı (splitter)",
+      "Şaft boyunca her daireye optik bağlantı kablosu (OBK)",
+      "Daire içinde zayıf akım panosu: OBK → ODK → ONT → priz",
+      "ONT’den odalara PVC Ø16 boru içinde CAT 6e kablo, RJ45 prizler"
+    ],
+    "fiberSource": "Kaynak: “Yeni uygulama” şeması ve 3B zayıf akım görselleri.",
+    "flatNotes": [
+      "Zayıf akım panosu giriş/koridor gibi erişilebilir bir yerde; içinde enerji prizi bulunur.",
+      "Her odaya ayrı CAT 6e hat – yıldız topoloji (seri bağlantı yok).",
+      "Kuvvetli akım ile zayıf akım boruları ayrı güzergâhtan çekilir."
+    ],
+    "images": [["Fiber kolon şeması", "img/fiber_sema.jpg"], ["Zayıf akım panosu (3B)", "img/zayif_akim_3d.jpg"]]
+  }
+}

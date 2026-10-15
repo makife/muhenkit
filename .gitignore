@@ -1,0 +1,24 @@
+# derleme çıktıları
+**/bin/
+**/obj/
+**/build/
+**/.gradle/
+**/.cxx/
+**/.vs/
+**/.idea/
+*.user
+local.properties
+windows/native/x64/
+# Apple
+**/DerivedData/
+**/xcuserdata/
+*.xcuserstate
+.DS_Store
+# imza anahtarları
+*.jks
+*.keystore
+*.p12
+*.mobileprovision
+
+# Windows ayrılmış ad (yanlışlıkla oluşan)
+nul
