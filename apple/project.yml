@@ -1,0 +1,58 @@
+# XcodeGen: `xcodegen generate` ile MuhenKit.xcodeproj üretilir (CI'da da aynı)
+name: MuhenKit
+options:
+  bundleIdPrefix: com.muhenkit
+  deploymentTarget:
+    iOS: "16.0"
+    macOS: "13.0"
+  createIntermediateGroups: true
+settings:
+  base:
+    SWIFT_VERSION: "5.0"
+    CLANG_CXX_LANGUAGE_STANDARD: c++17
+    MARKETING_VERSION: "2.0.0"
+    CURRENT_PROJECT_VERSION: "1"
+    # mkcad ve mkcalc'ta aynı adlı tables.h var: başlık haritası karıştırmasın
+    USE_HEADERMAP: NO
+targetTemplates:
+  App:
+    type: application
+    sources:
+      - path: MuhenKit
+      - path: ../core/mkcad/src
+      - path: ../core/mkcalc/src
+      - path: ../core/content
+        type: folder
+        buildPhase: resources
+    settings:
+      base:
+        PRODUCT_NAME: MuhenKit
+        SWIFT_OBJC_BRIDGING_HEADER: MuhenKit/Bridging.h
+        HEADER_SEARCH_PATHS:
+          - $(SRCROOT)/../core/mkcad/include
+          - $(SRCROOT)/../core/mkcalc/include
+        GCC_WARN_INHIBIT_ALL_WARNINGS: YES
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_KEY_CFBundleDisplayName: MühenKit
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
+targets:
+  MuhenKit-iOS:
+    templates: [App]
+    platform: iOS
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.muhenkit.app
+        TARGETED_DEVICE_FAMILY: "1,2"
+        INFOPLIST_KEY_UILaunchScreen_Generation: YES
+        INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone: "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight"
+        INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad: "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight"
+        INFOPLIST_KEY_UIFileSharingEnabled: YES
+        INFOPLIST_KEY_LSSupportsOpeningDocumentsInPlace: YES
+  MuhenKit-macOS:
+    templates: [App]
+    platform: macOS
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.muhenkit.mac
+        INFOPLIST_KEY_LSApplicationCategoryType: public.app-category.productivity
