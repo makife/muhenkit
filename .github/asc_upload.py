@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """App Store Connect API (Build Uploads) ile .ipa yükler — altool gerekmez.
 
-Kullanım: asc_upload.py <ipa> <app_id> <kısa sürüm> <yapı no>
+Kullanım: asc_upload.py <ipa|pkg> <app_id> <kısa sürüm> <yapı no> [IOS|MAC_OS]
 Ortam: ASC_KEY_ID, ASC_ISSUER_ID, KEY (.p8 yolu)
 """
 import hashlib
@@ -42,6 +42,8 @@ def call(method, path, body=None):
 
 def main():
     ipa, app_id, short, build = sys.argv[1:5]
+    platform = sys.argv[5] if len(sys.argv) > 5 else "IOS"
+    uti = "com.apple.pkg" if ipa.endswith(".pkg") else "com.apple.ipa"
     data = open(ipa, "rb").read()
     print(f"ipa: {len(data)} bayt, sürüm {short} ({build})")
 
@@ -51,7 +53,7 @@ def main():
 
     up = call("POST", "/buildUploads", {"data": {
         "type": "buildUploads",
-        "attributes": {"cfBundleShortVersionString": short, "cfBundleVersion": build, "platform": "IOS"},
+        "attributes": {"cfBundleShortVersionString": short, "cfBundleVersion": build, "platform": platform},
         "relationships": {"app": {"data": {"type": "apps", "id": app_id}}},
     }})
     up_id = up["data"]["id"]
@@ -59,7 +61,7 @@ def main():
 
     f = call("POST", "/buildUploadFiles", {"data": {
         "type": "buildUploadFiles",
-        "attributes": {"assetType": "ASSET", "fileName": os.path.basename(ipa), "fileSize": len(data), "uti": "com.apple.ipa"},
+        "attributes": {"assetType": "ASSET", "fileName": os.path.basename(ipa), "fileSize": len(data), "uti": uti},
         "relationships": {"buildUpload": {"data": {"type": "buildUploads", "id": up_id}}},
     }})
     file_id = f["data"]["id"]

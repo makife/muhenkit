@@ -345,6 +345,7 @@ public sealed partial class HomePage : Page
             Text = "Sorumluluk notu: Hesaplar ve tablolar ön tasarım ve kontrol amaçlıdır. Projenin yönetmeliklere uygunluğu ve sonuçların doğruluğu projeyi hazırlayan mühendisin sorumluluğundadır.",
             TextWrapping = TextWrapping.Wrap, FontSize = 12.5, Foreground = new SolidColorBrush(Color.FromArgb(255, 0x9F, 0xB6, 0xDC)),
         });
+        sp.Children.Add(new HyperlinkButton { Content = "Destek: makifergan@gmail.com", NavigateUri = new Uri("mailto:makifergan@gmail.com"), Padding = new Thickness(0) });
         sp.Children.Add(new HyperlinkButton { Content = "Gizlilik politikası", NavigateUri = new Uri(PrivacyUrl), Padding = new Thickness(0) });
         var dlg = new ContentDialog
         {

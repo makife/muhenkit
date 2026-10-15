@@ -27,6 +27,7 @@ struct AboutView: View {
                     Text("Elektrik proje çizimi (DXF) ve mühendislik hesapları. İnternet gerektirmez; projeleriniz yalnızca bu cihazda saklanır, kişisel veri toplanmaz.")
                     Text("Sorumluluk notu: Hesaplar ve tablolar ön tasarım ve kontrol amaçlıdır. Projenin yönetmeliklere uygunluğu ve sonuçların doğruluğu projeyi hazırlayan mühendisin sorumluluğundadır.")
                         .font(.footnote).foregroundStyle(Theme.muted)
+                    Link("Destek: makifergan@gmail.com", destination: URL(string: "mailto:makifergan@gmail.com")!)
                     Link("Gizlilik politikası", destination: Self.privacyURL)
                 }
                 .padding(20)

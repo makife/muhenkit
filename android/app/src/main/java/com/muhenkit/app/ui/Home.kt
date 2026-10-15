@@ -412,6 +412,7 @@ private fun ModuleChip(i: Int, r: Route, lit: Boolean, onPress: (Boolean) -> Uni
 
 
 const val PRIVACY_URL = "https://makife.github.io/muhenkit/gizlilik.html"
+const val SUPPORT_EMAIL = "makifergan@gmail.com"
 
 /** Hakkında: sürüm, sorumluluk notu, gizlilik */
 @Composable
@@ -429,11 +430,17 @@ fun AboutDialog(onDismiss: () -> Unit) {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Text("Sürüm $version", fontWeight = FontWeight.SemiBold)
                 Text("Elektrik proje çizimi (DXF) ve mühendislik hesapları. İnternet gerektirmez; projeleriniz yalnızca bu cihazda saklanır, kişisel veri toplanmaz.")
+                Text("Destek: $SUPPORT_EMAIL", fontSize = 13.sp)
                 Text("Sorumluluk notu: Hesaplar ve tablolar ön tasarım ve kontrol amaçlıdır. Projenin yönetmeliklere uygunluğu ve sonuçların doğruluğu projeyi hazırlayan mühendisin sorumluluğundadır.",
                     fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         },
         confirmButton = { TextButton(onClick = onDismiss) { Text("Kapat") } },
-        dismissButton = { TextButton(onClick = { runCatching { uri.openUri(PRIVACY_URL) } }) { Text("Gizlilik politikası") } },
+        dismissButton = {
+            Row {
+                TextButton(onClick = { runCatching { uri.openUri("mailto:$SUPPORT_EMAIL") } }) { Text("Destek") }
+                TextButton(onClick = { runCatching { uri.openUri(PRIVACY_URL) } }) { Text("Gizlilik") }
+            }
+        },
     )
 }
