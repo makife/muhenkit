@@ -2,11 +2,13 @@ name: TestFlight
 
 # iOS sürümünü App Store Connect'e (TestFlight) yükler: arşiv imzasız alınır; dağıtım imzasını
 # (sertifika + profil) dışa aktarma adımı API anahtarıyla kendisi oluşturur — cihaz kaydı gerekmez.
-# .ipa sonra altool ile yüklenir.
+# .ipa sonra App Store Connect API (Build Uploads) ile yüklenir (altool JWT'yi reddettiği için).
 # Gereken depo gizlileri (Settings → Secrets and variables → Actions):
 #   ASC_KEY_ID, ASC_ISSUER_ID, ASC_KEY_P8 (AuthKey_XXXX.p8 dosyasının içeriği), APPLE_TEAM_ID
-# Şimdilik elle başlatılır (yükleme kimlik sorunu çözülene kadar her gönderimde hata maili gelmesin)
 on:
+  push:
+    branches: [main]
+    paths: ["apple/**", "core/**", ".github/workflows/testflight.yml", ".github/asc_upload.py"]
   workflow_dispatch:
 
 jobs:
