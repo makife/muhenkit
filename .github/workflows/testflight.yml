@@ -13,7 +13,7 @@ on:
 
 jobs:
   upload:
-    runs-on: macos-15
+    runs-on: macos-26
     env:
       ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
       ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
@@ -29,6 +29,11 @@ jobs:
             echo "::notice::TestFlight gizlileri henüz eklenmedi; yükleme atlandı."
           fi
       - uses: actions/checkout@v5
+      - name: Xcode 26 seç
+        run: |
+          X=$(ls -d /Applications/Xcode_26*.app 2>/dev/null | sort -V | tail -1)
+          [ -n "$X" ] && sudo xcode-select -s "$X"
+          xcodebuild -version
         if: steps.check.outputs.ok == '1'
       - name: Arşivle ve yükle
         if: steps.check.outputs.ok == '1'
