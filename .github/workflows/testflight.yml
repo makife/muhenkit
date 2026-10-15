@@ -38,7 +38,7 @@ jobs:
           xcodegen generate
           # altool anahtarı ~/private_keys altında arar
           mkdir -p ~/private_keys
-          KEY="$HOME/private_keys/AuthKey_$ASC_KEY_ID.p8"
+          export KEY="$HOME/private_keys/AuthKey_$ASC_KEY_ID.p8"
           printf '%s\n' "$ASC_KEY_P8" > "$KEY"
           AUTH=(-allowProvisioningUpdates -authenticationKeyPath "$KEY" -authenticationKeyID "$ASC_KEY_ID" -authenticationKeyIssuerID "$ASC_ISSUER_ID")
           xcodebuild -project MuhenKit.xcodeproj -scheme MuhenKit-iOS -configuration Release \
@@ -60,7 +60,10 @@ jobs:
           xcodebuild -exportArchive -archivePath build/MuhenKit.xcarchive -exportOptionsPlist ExportOptions.plist \
             -exportPath build/export "${AUTH[@]}" > export.log 2>&1 || { bash ../.github/report.sh export.log; exit 1; }
           IPA=$(ls build/export/*.ipa | head -1)
-          xcrun altool --upload-app -f "$IPA" -t ios --apiKey "$ASC_KEY_ID" --apiIssuer "$ASC_ISSUER_ID" > upload.log 2>&1 \
-            || { cat upload.log; bash ../.github/report.sh upload.log; exit 1; }
-          cat upload.log
+          # yükleme: fastlane (App Store Connect API anahtarıyla)
+          python3 -c "import json,os; json.dump({'key_id':os.environ['ASC_KEY_ID'],'issuer_id':os.environ['ASC_ISSUER_ID'],'key':open(os.environ['KEY']).read(),'in_house':False}, open('asc.json','w'))"
+          gem install fastlane --no-document > /dev/null 2>&1 || sudo gem install fastlane --no-document > /dev/null
+          fastlane run upload_to_testflight ipa:"$IPA" api_key_path:"asc.json" skip_waiting_for_build_processing:true > upload.log 2>&1 \
+            || { tail -60 upload.log; bash ../.github/report.sh upload.log; exit 1; }
+          tail -15 upload.log
           echo "::notice::Yüklendi: yapı $GITHUB_RUN_NUMBER. App Store Connect işledikten sonra (5-15 dk) TestFlight'ta görünür."
