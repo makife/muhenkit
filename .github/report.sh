@@ -7,7 +7,7 @@ log, cwd = sys.argv[1], sys.argv[2]
 lines = open(log, errors="replace").read().splitlines()
 keep = []
 for i, l in enumerate(lines):
-    if re.search(r"error:|fatal error|Undefined symbol|ld: |\*\* BUILD FAILED", l):
+    if re.search(r"error:|fatal error|Undefined symbol|ld: |\*\* BUILD FAILED|HATA", l):
         s = l.replace(cwd + "/", "").strip()
         if s not in keep:
             keep.append(s)

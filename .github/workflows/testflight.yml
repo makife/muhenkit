@@ -62,25 +62,10 @@ jobs:
           xcodebuild -exportArchive -archivePath build/MuhenKit.xcarchive -exportOptionsPlist ExportOptions.plist \
             -exportPath build/export "${AUTH[@]}" > export.log 2>&1 || { bash ../.github/report.sh export.log; exit 1; }
           IPA=$(ls build/export/*.ipa | head -1)
-          # yükleme: önce Transporter, olmazsa altool'un --upload-package kipi (App Store Connect API anahtarıyla)
-          cp "$KEY" ~/private_keys/ 2>/dev/null || true
-          mkdir -p ~/.appstoreconnect/private_keys && cp "$KEY" ~/.appstoreconnect/private_keys/
-          OK=0
-          if xcrun iTMSTransporter -m upload -assetFile "$IPA" -apiKey "$ASC_KEY_ID" -apiIssuer "$ASC_ISSUER_ID" -v informational > upload.log 2>&1; then
-            grep -q "ERROR" upload.log || OK=1
-          fi
-          if [ "$OK" != "1" ]; then
-            echo "--- Transporter başarısız, altool --upload-package deneniyor ---" >> upload.log
-            VER=$(/usr/libexec/PlistBuddy -c "Print :ApplicationProperties:CFBundleShortVersionString" build/MuhenKit.xcarchive/Info.plist)
-            xcrun altool --upload-package "$IPA" -t ios --apple-id 6823229508 --bundle-id com.ergan.muhenkitelektrik \
-              --bundle-version "$GITHUB_RUN_NUMBER" --bundle-short-version-string "$VER" \
-              --apiKey "$ASC_KEY_ID" --apiIssuer "$ASC_ISSUER_ID" >> upload.log 2>&1 && OK=1
-          fi
-          if [ "$OK" != "1" ]; then
-            # bireysel (Individual) anahtar: Issuer ID verilmez
-            echo "--- Issuer ID'siz (bireysel anahtar) deneniyor ---" >> upload.log
-            xcrun altool --upload-app -f "$IPA" -t ios --apiKey "$ASC_KEY_ID" >> upload.log 2>&1 && OK=1
-          fi
-          if [ "$OK" != "1" ]; then tail -80 upload.log; bash ../.github/report.sh upload.log; exit 1; fi
-          tail -15 upload.log
+          # yükleme: App Store Connect API (Build Uploads) — altool anahtarı reddettiği için doğrudan REST
+          VER=$(/usr/libexec/PlistBuddy -c "Print :ApplicationProperties:CFBundleShortVersionString" build/MuhenKit.xcarchive/Info.plist)
+          python3 -m pip install --quiet --break-system-packages pyjwt cryptography 2>/dev/null || python3 -m pip install --quiet pyjwt cryptography
+          python3 ../.github/asc_upload.py "$IPA" 6823229508 "$VER" "$GITHUB_RUN_NUMBER" > upload.log 2>&1 \
+            || { cat upload.log; bash ../.github/report.sh upload.log; exit 1; }
+          cat upload.log
           echo "::notice::Yüklendi: yapı $GITHUB_RUN_NUMBER. App Store Connect işledikten sonra (5-15 dk) TestFlight'ta görünür."
