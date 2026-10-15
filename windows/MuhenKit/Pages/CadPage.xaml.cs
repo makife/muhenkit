@@ -427,6 +427,7 @@ public sealed partial class CadPage : Page
             if (Environment.GetEnvironmentVariable("MUHENKIT_SELFTEST") == "1") _ = SelfTest();
             if (Environment.GetEnvironmentVariable("MUHENKIT_SELFTEST") == "2") _ = SelfTestTracking();
             if (Environment.GetEnvironmentVariable("MUHENKIT_SELFTEST") == "3") _ = SelfTestTables();
+            if (Environment.GetEnvironmentVariable("MUHENKIT_SELFTEST") == "demo") _ = MakeDemo();
             if (Environment.GetEnvironmentVariable("MUHENKIT_SELFTEST") == "e") _ = SelfTestExport();
             if (Environment.GetEnvironmentVariable("MUHENKIT_SELFTEST") == "ed") OnExport();
             if (Environment.GetEnvironmentVariable("MUHENKIT_SELFTEST") is ['f', var fk]) AddTable((TableForms.Kind)(fk - '1'));
@@ -888,6 +889,90 @@ public sealed partial class CadPage : Page
             Note("kesişen seçim");
             _ed.SelectTool(CadTool.Copy); Click(cx, cy); _ed.Move(cx + 15 * u, cy - 3 * u, tol, false);
             Canvas.SetView(new ViewState(cx + 3 * u, cy - 2 * u, Canvas.View.Zoom * 1.6));
+        }
+        catch (Exception ex) { log.AppendLine("HATA " + ex); }
+        await File.WriteAllTextAsync(Path.Combine(Path.GetTempPath(), "muhenkit_selftest.txt"), log.ToString());
+    }
+
+    /// <summary>
+    /// MUHENKIT_SELFTEST=demo: örnek proje (core/content/demo.dxf) üretir — 2+1 daire planı, semboller, ölçü,
+    /// aydınlatma ve güç tabloları, antet. Çıktı yolu MUHENKIT_DEMO_OUT.
+    /// </summary>
+    private async Task MakeDemo()
+    {
+        var log = new System.Text.StringBuilder();
+        try
+        {
+            var d = _doc!;
+            var ids = new Dictionary<int, List<int>>(); // renk → nesneler
+            void Col(int aci, int id) { if (id >= 0) { if (!ids.TryGetValue(aci, out var l)) ids[aci] = l = new(); l.Add(id); } }
+            void Rect(double x0, double y0, double x1, double y1, int aci) => Col(aci, d.AddPolyline("0", [(x0, y0), (x1, y0), (x1, y1), (x0, y1)], true));
+            void Line(double x0, double y0, double x1, double y1, int aci) => Col(aci, d.AddLine("0", x0, y0, x1, y1));
+            void Txt(double x, double y, double h, string t, int aci) => Col(aci, d.AddText("0", x, y, h, 0, t));
+            CadSymbol S(string id) => SymbolLibrary.All.First(s => s.Id == id);
+            void Sym(string id, double x, double y, double sc, double rot, int aci) => Col(aci, d.InsertSymbol(S(id), "0", x, y, sc, rot));
+
+            // dış duvar (20 cm) ve bölmeler (10 cm); ölçüler cm
+            double W = 900, H = 700, t = 20;
+            Rect(0, 0, W, H, 7);
+            Rect(t, t, W - t, H - t, 7);
+            // salon | yatak odası dikey bölme x=500; mutfak/banyo yatay bölme y=420; banyo | mutfak x=280
+            Line(500, t, 500, 330, 7); Line(510, t, 510, 330, 7); Line(500, 330, 510, 330, 7);
+            Line(500, 420, 500, H - t, 7); Line(510, 420, 510, H - t, 7);
+            Line(t, 420, 400, 420, 7); Line(t, 430, 400, 430, 7); Line(400, 420, 400, 430, 7);
+            Line(280, 430, 280, H - t, 7); Line(290, 430, 290, H - t, 7);
+            Line(510, 420, W - t, 420, 7); Line(510, 430, W - t, 430, 7);
+            // oda adları
+            Txt(200, 130, 18, "SALON", 7); Txt(615, 130, 18, "YATAK ODASI", 7); Txt(75, 470, 16, "BANYO", 7);
+            Txt(330, 470, 16, "MUTFAK", 7); Txt(620, 480, 16, "ÇOCUK ODASI", 7); Txt(410, 390, 14, "HOL", 7);
+            // aydınlatma
+            Sym("AYD_ATY4X18W", 260, 260, 1.4, 0, 2); Sym("AYD_ATY4X18W", 700, 260, 1.2, 0, 2);
+            Sym("AYD_B40W_S", 150, 600, 1.6, 0, 2); Sym("AYD_B40W_S", 400, 600, 1.6, 0, 2); Sym("AYD_V1_40W", 700, 590, 1.6, 0, 2);
+            Sym("AYD_N3X20W", 470, 360, 1.2, 0, 2); Sym("AYD_C40W", 60, 520, 1.3, 0, 2);
+            // anahtarlar ve prizler
+            Sym("ANH_ADI", 470, 300, 1.4, 0, 3); Sym("ANH_VAVIEN", 540, 300, 1.4, 0, 3); Sym("ANH_ADI", 260, 450, 1.4, 0, 3);
+            Sym("ANH_ADI", 320, 450, 1.4, 0, 3); Sym("ANH_ADI", 540, 450, 1.4, 0, 3);
+            Sym("PRZ_TOPRAKLI", 45, 120, 1.4, 90, 1); Sym("PRZ_TOPRAKLI", 300, 45, 1.4, 0, 1); Sym("PRZ_TOPRAKLI", 470, 120, 1.4, 270, 1);
+            Sym("PRZ_TOPRAKLI", 860, 120, 1.4, 270, 1); Sym("PRZ_TOPRAKLI", 700, 45, 1.4, 0, 1); Sym("PRZ_TOPRAKLI", 860, 560, 1.4, 270, 1);
+            Sym("PRZ_ETANJ", 250, 650, 1.4, 180, 1); Sym("PRZ_TOPRAKLI", 450, 655, 1.4, 180, 1);
+            Sym("KLIMA_1KW", 140, 50, 1.3, 0, 4); Sym("BMAK", 340, 650, 1.3, 0, 6); Sym("FIRIN", 440, 650, 1.3, 0, 6);
+            Sym("CMAK", 120, 650, 1.3, 0, 6);
+            Sym("ZA_TMA", 870, 380, 1.6, 90, 5);
+            // ölçü (salon genişliği)
+            var dim = _ed.BuildDimension((0, 0), (500, 0), (250, -60));
+            Col(7, d.InsertDimension("0", 0, 0, dim.Snippet));
+            var dim2 = _ed.BuildDimension((0, 0), (0, H), (-60, 350));
+            Col(7, d.InsertDimension("0", 0, 0, dim2.Snippet));
+
+            // tablolar (yazı yüksekliği 10)
+            double th = 10;
+            var rooms = new List<ProjectTables.Room>
+            {
+                new() { Name = "SALON", A = "4.8", B = "3.9", Lux = "150", Power = "36", Flux = "3600", Type = "LED PANEL" },
+                new() { Name = "YATAK", A = "3.7", B = "3.9", Lux = "100", Power = "36", Flux = "3600", Type = "LED PANEL" },
+                new() { Name = "ÇOCUK", A = "3.7", B = "2.5", Lux = "100", Power = "18", Flux = "1800", Type = "LED" },
+                new() { Name = "MUTFAK", A = "2.1", B = "2.5", Lux = "200", Power = "18", Flux = "1800", Type = "LED" },
+                new() { Name = "BANYO", A = "2.5", B = "2.5", Lux = "100", Power = "18", Flux = "1600", Type = "ETANJ" },
+            };
+            var light = ProjectTables.LightingTable(th, rooms, "Not: Tasarruflu LED armatür kullanılması tercih edilerek armatür seçimi yapılmıştır.");
+            Col(7, d.InsertSymbol(light, "0", W + 140, H, 1, 0));
+            var power = ProjectTables.PowerTable(th, "TOPLAM GÜÇ TABLOSU", [
+                new() { Name = "AYDINLATMA", Installed = "1200", DemandPct = "100" }, new() { Name = "PRİZLER", Installed = "4500", DemandPct = "60" },
+                new() { Name = "MUTFAK CİHAZLARI", Installed = "5000", DemandPct = "60" }, new() { Name = "KLİMA", Installed = "1000", DemandPct = "100" }]);
+            Col(7, d.InsertSymbol(power, "0", W + 140, H - light.Height - 60, 1, 0));
+            var vals = ProjectTables.TitleFields.ToDictionary(f => f.Key, f => f.Default);
+            vals["firma"] = "ÖRNEK MÜHENDİSLİK"; vals["firmaAlt"] = "elektrik proje · taahhüt"; vals["sorumlu"] = "AD SOYAD"; vals["smm"] = "0000";
+            vals["et"] = "00000"; vals["il"] = "İSTANBUL"; vals["ilce"] = "KADIKÖY"; vals["sinif"] = "3A"; vals["kat"] = "4"; vals["alan"] = "95";
+            vals["bagimsiz"] = "8"; vals["kurulu"] = "11700"; vals["talepFaktor"] = "70"; vals["talep"] = "8190"; vals["cizen"] = "MühenKit"; vals["tarih"] = "2026";
+            var title = ProjectTables.TitleBlock(th, vals);
+            Col(7, d.InsertSymbol(title, "0", W + 140 + light.Width - title.Width, H - light.Height - 60 - power.Height - 60, 1, 0));
+            foreach (var (aci, l) in ids) if (aci != 7) d.SetColor(l, aci);
+            d.Rebuild();
+            var outp = Environment.GetEnvironmentVariable("MUHENKIT_DEMO_OUT") ?? Path.Combine(Path.GetTempPath(), "demo.dxf");
+            await File.WriteAllBytesAsync(outp, d.Save());
+            log.AppendLine($"demo: {d.Scene.EntityCount} nesne -> {outp}");
+            Canvas.UpdateScene(d.Scene);
+            Canvas.Fit();
         }
         catch (Exception ex) { log.AppendLine("HATA " + ex); }
         await File.WriteAllTextAsync(Path.Combine(Path.GetTempPath(), "muhenkit_selftest.txt"), log.ToString());

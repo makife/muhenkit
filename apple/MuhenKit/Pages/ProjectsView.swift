@@ -19,6 +19,13 @@ enum DxfImport {
         return ProjectStore.create(name: url.deletingPathExtension().lastPathComponent, bytes: data, source: url.path)
     }
 
+    /// Örnek proje (core/content/demo.dxf): 2+1 daire, semboller, tablolar, antet
+    static func demo() throws -> ProjectMeta {
+        if let m = ProjectStore.list().first(where: { $0.name == "Örnek proje" }) { return m }
+        let data = try Data(contentsOf: Content.url("demo.dxf"))
+        return ProjectStore.create(name: "Örnek proje", bytes: data, source: nil)
+    }
+
     static func blank() throws -> ProjectMeta {
         let data = try Data(contentsOf: Content.url("blank.dxf"))
         return ProjectStore.create(name: "Yeni proje \(ProjectStore.nextBlankNumber())", bytes: data, source: nil)
@@ -38,6 +45,9 @@ struct ProjectsView: View {
         List {
             Section {
                 Button { newBlank() } label: { Label("Boş proje", systemImage: "doc.badge.plus") }
+                Button {
+                    do { open(try DxfImport.demo().id) } catch { self.error = error.localizedDescription }
+                } label: { Label("Örnek proje", systemImage: "sparkles") }
                 Button { importing = true } label: { Label("DXF aç", systemImage: "folder.badge.plus") }
             }
             Section(projects.isEmpty ? "Henüz proje yok" : "Kayıtlı projeler") {

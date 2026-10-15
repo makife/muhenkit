@@ -36,6 +36,17 @@ enum Theme {
 struct MuhenKitApp: App {
     @StateObject private var nav = AppNav()
 
+    /// Mağaza görüntüleri için açılış ekranı: `-mkScreen cad|projects|<modül>` (simülatörde otomatik çekim)
+    private func openLaunchScreen() {
+        guard let s = UserDefaults.standard.string(forKey: "mkScreen"), !s.isEmpty, nav.path.isEmpty else { return }
+        switch s {
+        case "home": break
+        case "cad": if let m = try? DxfImport.demo() { nav.path = [.cad(m.id)] }
+        case "projects": _ = try? DxfImport.demo(); nav.path = [.projects]
+        default: if let r = RouteId(rawValue: s) { nav.path = [.module(r)] }
+        }
+    }
+
     var body: some Scene {
         WindowGroup {
             NavigationStack(path: $nav.path) {
@@ -49,6 +60,7 @@ struct MuhenKitApp: App {
                     }
             }
             .environmentObject(nav)
+            .task { openLaunchScreen() }
             .preferredColorScheme(.dark)
             .tint(Theme.accent)
             #if os(macOS)
