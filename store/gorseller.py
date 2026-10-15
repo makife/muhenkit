@@ -161,7 +161,7 @@ def screens(folder):
     elif "ipad" in low:
         name, (w, h, corner), crop = "ipad_13", (2064, 2752, 40), (0.0, 0.0)
     else:
-        name, (w, h, corner), crop = "iphone_6.9", (1320, 2868, 110), (0.0, 0.0)
+        name, (w, h, corner), crop = "iphone_6.9", (1320, 2868, 110), (0.038, 0.0)  # durum çubuğu
     out = os.path.join(OUT, name)
     os.makedirs(out, exist_ok=True)
     for i, f in enumerate(shots):

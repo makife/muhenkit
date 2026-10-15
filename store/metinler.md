@@ -59,7 +59,7 @@ Not: Hesaplar ve tablolar ön tasarım ve kontrol amaçlıdır; projenin yönetm
 | App Privacy | "Data Not Collected" (Veri toplanmıyor) | |
 | Telif | © 2026 (adınız / firmanız) | |
 
-Ekran görüntüleri: iPhone 6,9" (1320×2868) en az 3 adet; iPad 13" (2064×2752) — iPad desteklendiği için zorunlu.
+Ekran görüntüleri: iPhone 6,9" (1320×2868) — MAGAZA_GORSELLERI/iphone_6.9 (8 adet). Uygulama yalnız iPhone (iPad ekran görüntüsü gerekmez).
 Mac: 1280×800 ya da 2880×1800, en az 1 adet.
 
 ## Google Play

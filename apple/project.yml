@@ -46,7 +46,8 @@ targets:
       base:
         # App Store Connect'teki kayıtla aynı olmalı
         PRODUCT_BUNDLE_IDENTIFIER: com.ergan.muhenkitelektrik
-        TARGETED_DEVICE_FAMILY: "1,2"
+        # yalnız iPhone (iPad ekran görüntüsü yok); iPad'de iPhone uygulaması olarak açılır
+        TARGETED_DEVICE_FAMILY: "1"
         INFOPLIST_KEY_UILaunchScreen_Generation: YES
         INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone: "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight"
         INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad: "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight"
