@@ -108,7 +108,7 @@ struct MaterialsModule: View {
     var body: some View {
         let m = Calc.num(markup) ?? 1
         let chosen = rows.filter { (qty[$0[2]] ?? 0) > 0 }
-        let total = chosen.reduce(0) { $0 + price($1) * Double(qty[$1[2]]!) * m }
+        let total = chosen.reduce(0.0) { $0 + price($1) * Double(qty[$1[2]]!) * m }
         let lines = chosen.map { c in "\(c[0]) \(c[1]) (\(c[2])): \(qty[c[2]]!) adet × \(fmt(price(c) * m, 2)) TL" }
         ModulePage(route: .materials, subtitle: "Sigorta, kaçak akım rölesi, kompakt şalter (2018 liste fiyatları)") {
             ForEach(groups, id: \.0) { title, items in

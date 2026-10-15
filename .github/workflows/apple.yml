@@ -3,7 +3,7 @@ name: Apple
 on:
   push:
     branches: [main]
-    paths: ["apple/**", "core/**", ".github/workflows/apple.yml"]
+    paths: ["apple/**", "core/**", ".github/workflows/apple.yml", ".github/report.sh"]
   workflow_dispatch:
 
 jobs:
@@ -11,26 +11,24 @@ jobs:
     runs-on: macos-15
     steps:
       - uses: actions/checkout@v5
-      - name: Xcode projesi üret
+      - name: Xcode projesi uret
         working-directory: apple
         run: |
           brew install xcodegen
           xcodegen generate
-      - name: macOS uygulaması
+      - name: macOS uygulamasi
         working-directory: apple
         run: |
-          set -o pipefail
           xcodebuild -project MuhenKit.xcodeproj -scheme MuhenKit-macOS -configuration Release \
             -derivedDataPath build -destination 'generic/platform=macOS' \
-            CODE_SIGN_IDENTITY=- CODE_SIGNING_REQUIRED=NO build | tail -n 60
+            CODE_SIGN_IDENTITY=- CODE_SIGNING_REQUIRED=NO build > mac.log 2>&1 || { bash ../.github/report.sh mac.log; exit 1; }
           ditto -c -k --keepParent build/Build/Products/Release/MuhenKit.app MuhenKit-macOS.zip
-      - name: iOS (imzasız derleme denetimi)
+      - name: iOS (imzasiz derleme denetimi)
         working-directory: apple
         run: |
-          set -o pipefail
           xcodebuild -project MuhenKit.xcodeproj -scheme MuhenKit-iOS -configuration Release \
             -derivedDataPath build -destination 'generic/platform=iOS' \
-            CODE_SIGNING_ALLOWED=NO build | tail -n 60
+            CODE_SIGNING_ALLOWED=NO build > ios.log 2>&1 || { bash ../.github/report.sh ios.log; exit 1; }
       - uses: actions/upload-artifact@v5
         with:
           name: MuhenKit-macOS

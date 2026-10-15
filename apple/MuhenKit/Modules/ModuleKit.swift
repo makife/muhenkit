@@ -153,10 +153,12 @@ struct ChoiceField<T: Hashable>: View {
         self.text = text
     }
 
+    private var compact: Bool { options.count <= 6 && options.map { text($0).count }.reduce(0, +) < 80 }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 5) {
             if let label { Text(label).font(.caption).foregroundStyle(Theme.muted) }
-            if options.count <= 6 && options.map { text($0).count }.reduce(0, +) < 80 {
+            if compact {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 6) {
                         ForEach(options, id: \.self) { o in
