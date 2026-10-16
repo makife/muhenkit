@@ -38,8 +38,14 @@ jobs:
           AUTH=(-allowProvisioningUpdates -authenticationKeyPath "$KEY" -authenticationKeyID "$ASC_KEY_ID" -authenticationKeyIssuerID "$ASC_ISSUER_ID")
           xcodebuild -project MuhenKit.xcodeproj -scheme MuhenKit-macOS -configuration Release \
             -destination 'generic/platform=macOS' -archivePath build/MuhenKitMac.xcarchive \
-            DEVELOPMENT_TEAM="$TEAM" CURRENT_PROJECT_VERSION="$BUILD" CODE_SIGNING_ALLOWED=NO \
+            DEVELOPMENT_TEAM="$TEAM" CURRENT_PROJECT_VERSION="$BUILD" \
+            CODE_SIGN_STYLE=Manual CODE_SIGN_IDENTITY="-" PROVISIONING_PROFILE_SPECIFIER="" \
             archive > archive.log 2>&1 || { bash ../.github/report.sh archive.log; exit 1; }
+          # arşiv ad-hoc imzalı: imzasız (CODE_SIGNING_ALLOWED=NO) alınınca entitlements gömülmüyor, dağıtım imzası
+          # sandbox'sız atılıyor ve App Store yüklemeyi sonradan 90296 "App sandbox not enabled" ile reddediyor
+          APP=$(ls -d build/MuhenKitMac.xcarchive/Products/Applications/*.app | head -1)
+          codesign -d --entitlements - "$APP" 2>&1 | tee ent.txt
+          grep -q app-sandbox ent.txt || { echo "::error::Arşivde app-sandbox entitlement yok"; exit 1; }
           cat > ExportOptions.plist <<PLIST
           <?xml version="1.0" encoding="UTF-8"?>
           <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">

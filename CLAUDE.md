@@ -52,6 +52,11 @@ Dört iş akışı, her biri bir platform (hepsi main'e gönderimde ilgili klas�
   `-mkScreen home|cad|projects|<RouteId>` açılış parametresiyle ekranı örnek projeyle açar; artifact `ipad-ekranlar`).
 - `macos.yml`: Mac App Store (ayrı satış) — .pkg, platform MAC_OS; depo değişkeni `ASC_MAC_APP_ID` = 6823622933
   (mağaza adı "MühenKit Elektrik Mac"; ilk yükleme yapı 26).
+  Mac arşivi **ad-hoc imzalı** alınır (`CODE_SIGN_IDENTITY="-"`), imzasız değil: imzasız arşivde entitlements gömülmez,
+  Apple yüklemeyi kabul edip işlerken **90296 "App sandbox not enabled"** ile reddeder (yapı 26 ve 101 böyle düştü).
+  İş akışı arşivde `app-sandbox` olduğunu `codesign -d --entitlements` ile denetler.
+- `asc_upload.py` yüklemeden sonra Apple işlemeyi bitirene kadar (~20 dk) bekler; FAILED olursa hatayı annotation yazıp CI'ı düşürür
+  (önceden "başarılı" görünüp App Store'da sessizce reddediliyordu).
 - iOS/macOS yapı numarası = run_number + 100 (eski testflight.yml 26'ya kadar kullandı; numara geriye düşerse App Store reddeder).
 - Derleme hataları `.github/report.sh` ile annotation olarak yazılır (günlük indirmeden okunur).
 

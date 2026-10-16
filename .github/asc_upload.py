@@ -86,18 +86,19 @@ def main():
     }})
     print("yükleme tamamlandı bildirildi")
 
-    # işleme durumunu kısa süre izle
-    for _ in range(30):
-        st = call("GET", f"/buildUploads/{up_id}")
-        attrs = st["data"]["attributes"]
-        state = attrs.get("state") or attrs
-        print("durum:", json.dumps(state)[:600])
-        s = json.dumps(state)
-        if "COMPLETE" in s or "PROCESSING" in s and "AWAITING" not in s:
-            break
-        if "FAILED" in s:
+    # Apple işlemeyi bitirene kadar izle: reddedilen yapı (ör. 90296 sandbox) CI'da hata olarak görünsün
+    for _ in range(60):
+        state = call("GET", f"/buildUploads/{up_id}")["data"]["attributes"].get("state") or {}
+        s = state.get("state") if isinstance(state, dict) else str(state)
+        print("durum:", s)
+        if s == "COMPLETE":
+            return
+        if s == "FAILED":
+            for e in state.get("errors") or []:
+                print(f"::error title=App Store {e.get('code')}::{e.get('description')}")
             sys.exit(1)
         time.sleep(20)
+    print("::warning::Apple işlemeyi 20 dakikada bitirmedi; sonucu ios.yml 'durum' ile denetle")
 
 
 if __name__ == "__main__":
