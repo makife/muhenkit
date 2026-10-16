@@ -12,7 +12,7 @@ android {
     ndkVersion = "28.2.13676358"
 
     defaultConfig {
-        applicationId = "com.muhenkit.app"
+        applicationId = "com.ergan.muhenkitelektrik"
         minSdk = 26
         targetSdk = 36
         // CI'da her derleme artan numara (Play aynı numarayı ikinci kez kabul etmez)

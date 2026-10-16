@@ -55,7 +55,7 @@ jobs:
           printf '%s' "$PLAY_JSON" > "$RUNNER_TEMP/play.json"
           pip install --quiet pyjwt cryptography
           set +e  # hata kodunu kendimiz değerlendiriyoruz (varsayılan kabuk -e -o pipefail)
-          python3 .github/play_upload.py "$RUNNER_TEMP/play.json" com.muhenkit.app \
+          python3 .github/play_upload.py "$RUNNER_TEMP/play.json" com.ergan.muhenkitelektrik \
             android/app/build/outputs/bundle/release/app-release.aab alpha 2>&1 | tee play.log
           rc=${PIPESTATUS[0]}
           rm -f "$RUNNER_TEMP/play.json"

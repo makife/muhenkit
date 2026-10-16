@@ -42,7 +42,7 @@ Windows test bayrakları: `MuhenKit.exe <dxf>` · `--projeler` · `--modul=<Rout
 
 - `android.yml`: imzalı APK + AAB (Play yükleme anahtarı secrets'tan; `VERSION_CODE` = run_number), ardından `.github/play_upload.py` ile
   Play **Kapalı test (alpha)** kanalına yükler (hizmet hesabı muhenkit-play@bielat-1c00a, secret `PLAY_SERVICE_ACCOUNT_JSON`;
-  uygulama yayınlanmamışsa taslak olarak). Yerelde erişim denetimi: `python .github/play_upload.py <json> com.muhenkit.app - alpha`
+  uygulama yayınlanmamışsa taslak olarak). Yerelde erişim denetimi: `python .github/play_upload.py <json> com.ergan.muhenkitelektrik - alpha`
 - `windows.yml`: mkcore.dll + WinUI derlemesi
 - `apple.yml`: **macos-26 + Xcode 26** (App Store iOS 26 SDK şartı), macOS ve iOS derleme denetimi
 - `testflight.yml`: iOS arşivi imzasız → `exportArchive` (otomatik dağıtım imzası, API anahtarı) → `.github/asc_upload.py`
@@ -58,7 +58,7 @@ Secrets: `PLAY_SERVICE_ACCOUNT_JSON`, `ASC_KEY_ID`, `ASC_ISSUER_ID`, `ASC_KEY_P8
 
 Kimlikler: iOS paket `com.ergan.muhenkitelektrik` (App Store Connect uygulama no 6823229508), macOS `com.ergan.muhenkitelektrik.mac`
 (ayrı kayıt, ayrı satış; Mac'te PRODUCT_NAME "MühenKit Elektrik", EXECUTABLE_NAME ASCII `MuhenKit` — "ü" codesign'ı bozuyor),
-Android `com.muhenkit.app`. Uygulama adı her yerde **MühenKit Elektrik**. Destek e-postası makifergan@gmail.com.
+Android `com.ergan.muhenkitelektrik` (iOS ile aynı; Kotlin paket adı/namespace `com.muhenkit.app` kaldı). Uygulama adı her yerde **MühenKit Elektrik**. Destek e-postası makifergan@gmail.com.
 Dört platformda ayrı ücretli satış, uygulama içi satın alma yok, sunucu yok. iPad destekli (kullanıcının tableti yok).
 
 ## Mağaza
