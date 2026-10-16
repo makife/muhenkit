@@ -709,7 +709,8 @@ public sealed partial class CadPage : Page
             }
         }
         try { if (File.Exists(path) && new FileInfo(path).Length == 0) File.Delete(path); } catch { }
-        throw new IOException("Dosya yazılamadı (klasöre yazma izni yok ya da dosya başka bir programda açık). Başka bir klasör deneyin.", first);
+        throw new IOException("Dosya yazılamadı: bu klasöre yazma engellendi. Virüs programının fidye yazılımı koruması (AVG, Avast, Defender…) " +
+            "İndirilenler/Belgeler/Resimler klasörlerini koruyor olabilir; MühenKit'e izin verin ya da başka bir klasör seçin.", first);
     }
 
     /// <summary>MUHENKIT_SELFTEST=e: açık çizimi %TEMP%'e PDF ve PNG olarak çıkarır</summary>
