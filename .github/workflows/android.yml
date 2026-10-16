@@ -3,7 +3,7 @@ name: Android
 on:
   push:
     branches: [main]
-    paths: ["android/**", "core/**", ".github/workflows/android.yml"]
+    paths: ["android/**", "core/**", ".github/workflows/android.yml", ".github/play_upload.py"]
   workflow_dispatch:
 
 jobs:
@@ -45,3 +45,19 @@ jobs:
           path: |
             android/app/build/outputs/apk/release/*.apk
             android/app/build/outputs/bundle/release/*.aab
+      # Play Console: Kapalı test (alpha) kanalına yükle. Hizmet hesabı Play'de "Test kanallarına yayınlama" izinli.
+      # İlk AAB Play'e elle yüklenmiş olmalı (API yeni paketi tanımıyor: "Package not found").
+      - name: Google Play'e yükle (Kapalı test)
+        env:
+          PLAY_JSON: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
+        run: |
+          if [ -z "$PLAY_JSON" ]; then echo "::warning::PLAY_SERVICE_ACCOUNT_JSON yok: Play'e yüklenmedi"; exit 0; fi
+          printf '%s' "$PLAY_JSON" > "$RUNNER_TEMP/play.json"
+          pip install --quiet pyjwt cryptography
+          set +e  # hata kodunu kendimiz değerlendiriyoruz (varsayılan kabuk -e -o pipefail)
+          python3 .github/play_upload.py "$RUNNER_TEMP/play.json" com.muhenkit.app \
+            android/app/build/outputs/bundle/release/app-release.aab alpha 2>&1 | tee play.log
+          rc=${PIPESTATUS[0]}
+          rm -f "$RUNNER_TEMP/play.json"
+          if grep -q "Package not found" play.log; then echo "::warning::Play paketi tanımıyor: ilk AAB'yi Play Console'a elle yükleyin"; exit 0; fi
+          [ $rc -eq 0 ] && echo "::notice::$(tail -1 play.log)" || { echo "::error::Play yüklemesi: $(tail -1 play.log)"; exit $rc; }

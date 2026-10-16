@@ -40,7 +40,9 @@ Windows test bayrakları: `MuhenKit.exe <dxf>` · `--projeler` · `--modul=<Rout
 
 ## CI (GitHub Actions, depo makife/muhenkit)
 
-- `android.yml`: imzalı APK + AAB (Play yükleme anahtarı secrets'tan; `VERSION_CODE` = run_number)
+- `android.yml`: imzalı APK + AAB (Play yükleme anahtarı secrets'tan; `VERSION_CODE` = run_number), ardından `.github/play_upload.py` ile
+  Play **Kapalı test (alpha)** kanalına yükler (hizmet hesabı muhenkit-play@bielat-1c00a, secret `PLAY_SERVICE_ACCOUNT_JSON`;
+  uygulama yayınlanmamışsa taslak olarak). Yerelde erişim denetimi: `python .github/play_upload.py <json> com.muhenkit.app - alpha`
 - `windows.yml`: mkcore.dll + WinUI derlemesi
 - `apple.yml`: **macos-26 + Xcode 26** (App Store iOS 26 SDK şartı), macOS ve iOS derleme denetimi
 - `testflight.yml`: iOS arşivi imzasız → `exportArchive` (otomatik dağıtım imzası, API anahtarı) → `.github/asc_upload.py`
@@ -51,7 +53,7 @@ Windows test bayrakları: `MuhenKit.exe <dxf>` · `--projeler` · `--modul=<Rout
   parametresiyle ekranı örnek projeyle açar); artifact `ipad-ekranlar`.
 - Derleme hataları `.github/report.sh` ile annotation olarak yazılır (günlük indirmeden okunur).
 
-Secrets: `ASC_KEY_ID`, `ASC_ISSUER_ID`, `ASC_KEY_P8`, `APPLE_TEAM_ID`, `ANDROID_KEYSTORE_B64`, `ANDROID_KEYSTORE_PASSWORD`,
+Secrets: `PLAY_SERVICE_ACCOUNT_JSON`, `ASC_KEY_ID`, `ASC_ISSUER_ID`, `ASC_KEY_P8`, `APPLE_TEAM_ID`, `ANDROID_KEYSTORE_B64`, `ANDROID_KEYSTORE_PASSWORD`,
 `ANDROID_KEY_ALIAS`, `ANDROID_KEY_PASSWORD`.
 
 Kimlikler: iOS paket `com.ergan.muhenkitelektrik` (App Store Connect uygulama no 6823229508), macOS `com.ergan.muhenkitelektrik.mac`
@@ -66,8 +68,8 @@ Dört platformda ayrı ücretli satış, uygulama içi satın alma yok, sunucu y
   `iphone_6.9/`, `ipad_13/`, `tam_aciklama.txt`. Üretim: ham görüntüleri `ham_android|ham_iphone|ham_ipad/` içine (1.png…) +
   `basliklar.txt` ("Başlık | alt başlık"), sonra `PYTHONIOENCODING=utf-8 python store/gorseller.py ekran <ham klasör>`.
   Android çıktısında durum/gezinme çubuğu, iPhone'da durum çubuğu kırpılır.
-- Play: ilk AAB (`../MuhenKit_Elektrik_Play.aab`) kullanıcı tarafından elle Kapalı test (Alpha) kanalına yüklenir; otomatik
-  yükleme için `PLAY_SERVICE_ACCOUNT_JSON` secret'ı bekleniyor.
+- Play: ilk AAB (`../MuhenKit_Elektrik_Play.aab`) kullanıcı tarafından elle Kapalı test (Alpha) kanalına yüklenir (API o zamana
+  kadar "Package not found" der); sonrakileri android.yml otomatik yükler.
 - Microsoft Store: MSIX için Partner Center "Product identity" değerleri (Name, Publisher, PublisherDisplayName) bekleniyor.
 
 **Android yükleme anahtarı depo dışında**: `../IMZA_ANAHTARLARI/muhenkit-upload.jks` + `SIFRE_BENI_OKU.txt`;
