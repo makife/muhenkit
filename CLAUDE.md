@@ -45,7 +45,7 @@ Windows test bayrakları: `MuhenKit.exe <dxf>` · `--projeler` · `--modul=<Rout
 - `apple.yml`: **macos-26 + Xcode 26** (App Store iOS 26 SDK şartı), macOS ve iOS derleme denetimi
 - `testflight.yml`: iOS arşivi imzasız → `exportArchive` (otomatik dağıtım imzası, API anahtarı) → `.github/asc_upload.py`
   ile **App Store Connect API Build Uploads** (altool JWT'yi reddediyor, kullanma). Her apple/core gönderiminde çalışır.
-  Aynı dosyada `mac` işi: Mac App Store (ayrı satış) — depo değişkeni `ASC_MAC_APP_ID` tanımlanınca çalışır (.pkg, platform MAC_OS).
+  Aynı dosyada `mac` işi: Mac App Store (ayrı satış) — depo değişkeni `ASC_MAC_APP_ID` = 6823622933 (.pkg, platform MAC_OS; mağaza adı "MühenKit Elektrik Mac", ilk yükleme yapı 26).
 - `asc-status.yml` (elle): App Store'daki yapıların işleme durumu/hataları (`.github/asc_status.py`) — "TestFlight'ta yok" denirse önce buna bak.
 - `ipad-ekran.yml` (elle): iPad Pro 13" simülatöründe mağaza görüntüleri çeker (uygulama `-mkScreen home|cad|projects|<RouteId>` açılış
   parametresiyle ekranı örnek projeyle açar); artifact `ipad-ekranlar`.
