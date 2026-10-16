@@ -154,7 +154,9 @@ struct CadScreen: View {
                     } catch { model.error = error.localizedDescription }
                 }
             }
-            .fileExporter(isPresented: $exporting, document: exportFile, contentType: exportType, defaultFilename: exportName) { _ in }
+            .fileExporter(isPresented: $exporting, document: exportFile, contentType: exportType, defaultFilename: exportName) { r in
+                if case .failure(let e) = r { model.error = "Kaydedilemedi: " + e.localizedDescription }
+            }
             .alert("Hata", isPresented: Binding(get: { model.error != nil }, set: { if !$0 { model.error = nil } })) {
                 Button("Tamam", role: .cancel) {}
             } message: { Text(model.error ?? "") }

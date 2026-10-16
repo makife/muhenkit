@@ -271,7 +271,9 @@ class CadEditor(private val context: Context, private val scope: CoroutineScope)
         return try {
             withContext(Dispatchers.IO) {
                 val bytes = d.save()
-                context.contentResolver.openOutputStream(uri, "wt")?.use { it.write(bytes) } ?: throw CadException("Yazılamadı")
+                val out = runCatching { context.contentResolver.openOutputStream(uri, "wt") }.getOrNull()
+                    ?: context.contentResolver.openOutputStream(uri, "w") ?: throw CadException("Yazılamadı")
+                out.use { it.write(bytes) }
             }
             sourceUri = uri
             refreshCounts()

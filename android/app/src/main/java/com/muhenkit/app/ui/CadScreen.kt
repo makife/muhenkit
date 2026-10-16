@@ -112,7 +112,11 @@ fun CadScreen(request: CadRequest?, onExit: () -> Unit = {}) {
         scope.launch {
             try {
                 kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-                    context.contentResolver.openOutputStream(uri, "wt")?.use { it.write(b) }
+                    // bazı sağlayıcılar (Drive vb.) "wt" kipini desteklemiyor: "w" ile yeniden dene
+                    val out = runCatching { context.contentResolver.openOutputStream(uri, "wt") }.getOrNull()
+                        ?: context.contentResolver.openOutputStream(uri, "w")
+                        ?: throw java.io.IOException("Dosya açılamadı")
+                    out.use { it.write(b) }
                 }
                 ed.message = "Dışa aktarıldı"
             } catch (e: Exception) {

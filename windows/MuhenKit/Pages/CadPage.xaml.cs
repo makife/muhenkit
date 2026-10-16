@@ -518,16 +518,16 @@ public sealed partial class CadPage : Page
         WinRT.Interop.InitializeWithWindow.Initialize(picker, App.MainHwnd);
         picker.FileTypeChoices.Add("DXF", [".dxf"]);
         var f = await picker.PickSaveFileAsync();
-        if (f != null) await SaveTo(f.Path);
+        if (f != null) await SaveTo(f.Path, f);
     }
 
-    private async Task SaveTo(string path)
+    private async Task SaveTo(string path, Windows.Storage.StorageFile? file = null)
     {
         var d = _doc!;
         try
         {
             var bytes = await Task.Run(d.Save);
-            await File.WriteAllBytesAsync(path, bytes);
+            await WriteBytes(path, bytes, file);
             if (_project is { } m)
             {
                 _project = m with { Source = path, DirtyToSource = false };
@@ -664,7 +664,7 @@ public sealed partial class CadPage : Page
         if (f == null) { Canvas.Focus(FocusState.Programmatic); return; }
         try
         {
-            await ExportTo(f.Path, o);
+            await ExportTo(f.Path, o, f);
             ShowMessage($"Kaydedildi: {f.Name}");
             if (_openAfterExport) Windows.System.Launcher.LaunchFileAsync(f).AsTask().ContinueWith(_ => { });
         }
@@ -676,14 +676,40 @@ public sealed partial class CadPage : Page
         Canvas.Focus(FocusState.Programmatic);
     }
 
-    private async Task ExportTo(string path, ExportOptions o)
+    private async Task ExportTo(string path, ExportOptions o, Windows.Storage.StorageFile? file = null)
     {
         var s = _doc!.Scene;
         var hidden = Canvas.Hidden.ToHashSet();
         var win = o.ViewOnly ? Canvas.ViewWindow() : Exporter.Extents(s);
         var title = Path.GetFileNameWithoutExtension(_project?.Name ?? _doc.Name);
         var bytes = await Task.Run(() => Exporter.Render(s, hidden, win, o, title));
-        await File.WriteAllBytesAsync(path, bytes);
+        await WriteBytes(path, bytes, file);
+    }
+
+    /// <summary>
+    /// Dosyaya yaz. Seçicinin verdiği dosya önce StorageFile üzerinden yazılır: bazı klasörlerde (İndirilenler, OneDrive,
+    /// virüs koruması) doğrudan yazma "Access denied" veriyor ve seçicinin açtığı 0 baytlık dosya "bozuk" olarak kalıyordu.
+    /// Hepsi başarısız olursa boş dosya silinir.
+    /// </summary>
+    private static async Task WriteBytes(string path, byte[] bytes, Windows.Storage.StorageFile? file)
+    {
+        Exception? first = null;
+        if (file != null)
+        {
+            try { await Windows.Storage.FileIO.WriteBytesAsync(file, bytes); return; }
+            catch (Exception ex) { first = ex; App.Log("StorageFile yazma: " + ex.Message); }
+        }
+        for (int i = 0; i < 3; i++)
+        {
+            try { await File.WriteAllBytesAsync(path, bytes); return; }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                first ??= ex;
+                await Task.Delay(300);
+            }
+        }
+        try { if (File.Exists(path) && new FileInfo(path).Length == 0) File.Delete(path); } catch { }
+        throw new IOException("Dosya yazılamadı (klasöre yazma izni yok ya da dosya başka bir programda açık). Başka bir klasör deneyin.", first);
     }
 
     /// <summary>MUHENKIT_SELFTEST=e: açık çizimi %TEMP%'e PDF ve PNG olarak çıkarır</summary>
