@@ -66,10 +66,15 @@ final class CadModel: ObservableObject {
     /// Görünüm ve katman durumunu projeye yaz; çizim değiştiyse çalışma kopyasını da
     func persist() {
         guard let d = editor.doc, var m = project else { return }
-        if d.undoCount > 0 || d.dirty {
+        let changed = d.undoCount > 0 || d.dirty
+        if changed {
             ProjectStore.writeDrawing(m.id, d.saveCopy())
             m.modified = ProjectStore.now
             m.dirty = d.dirty
+        }
+        if let s = d.scene, changed || !FileManager.default.fileExists(atPath: ProjectStore.thumb(m.id).path),
+           let png = Exporter.thumbnail(s, hidden: hidden) {
+            ProjectStore.writeThumb(m.id, png)
         }
         m.view = [view.cx + d.originX, view.cy + d.originY, view.zoom]
         m.hidden = Array(hidden).sorted()

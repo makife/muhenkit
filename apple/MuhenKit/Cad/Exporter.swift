@@ -70,6 +70,24 @@ enum Exporter {
         return out as Data
     }
 
+    /// Projelerim önizlemesi: tüm çizim, beyaz zemin, renkli (Android writeThumb ile aynı: 480×300)
+    static func thumbnail(_ s: CadScene, hidden: Set<Int>, width w: Int = 480, height h: Int = 300) -> Data? {
+        guard let ctx = CGContext(data: nil, width: w, height: h, bitsPerComponent: 8, bytesPerRow: 0, space: CGColorSpaceCreateDeviceRGB(),
+                                  bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue) else { return nil }
+        ctx.textMatrix = .identity
+        ctx.setFillColor(CGColor(red: 1, green: 1, blue: 1, alpha: 1))
+        ctx.fill(CGRect(x: 0, y: 0, width: w, height: h))
+        let pad = CGFloat(max(s.maxX - s.minX, 1)) * 0.03
+        let win = CGRect(x: CGFloat(s.minX) - pad, y: CGFloat(s.minY) - pad,
+                         width: CGFloat(s.maxX - s.minX) + 2 * pad, height: CGFloat(s.maxY - s.minY) + 2 * pad)
+        drawContent(ctx, CGRect(x: 4, y: 4, width: w - 8, height: h - 8), s, hidden, win, false, lineWidth: 0.8)
+        guard let img = ctx.makeImage() else { return nil }
+        let out = NSMutableData()
+        guard let dest = CGImageDestinationCreateWithData(out as CFMutableData, UTType.png.identifier as CFString, 1, nil) else { return nil }
+        CGImageDestinationAddImage(dest, img, nil)
+        return CGImageDestinationFinalize(dest) ? out as Data : nil
+    }
+
     private static func color(_ rgb: UInt32, _ mono: Bool, alpha: CGFloat = 1) -> CGColor {
         if mono { return CGColor(red: 0, green: 0, blue: 0, alpha: alpha) }
         let c = rgb & 0xFFFFFF
@@ -85,6 +103,30 @@ enum Exporter {
         c.setFillColor(CGColor(red: 1, green: 1, blue: 1, alpha: 1))
         c.fill(CGRect(x: 0, y: 0, width: w, height: h))
         let target = CGRect(x: margin, y: margin + footer, width: w - 2 * margin, height: h - 2 * margin - footer)
+        drawContent(c, target, s, hidden, win, o.monochrome, lineWidth: lineWidth)
+
+        // çerçeve ve alt bilgi
+        let black = CGColor(red: 0, green: 0, blue: 0, alpha: 1)
+        c.setStrokeColor(black)
+        c.setLineWidth(0.6)
+        c.stroke(CGRect(x: margin, y: margin, width: w - 2 * margin, height: h - 2 * margin))
+        c.move(to: CGPoint(x: margin, y: margin + footer))
+        c.addLine(to: CGPoint(x: w - margin, y: margin + footer))
+        c.strokePath()
+        let small = CTFontCreateWithName("Helvetica" as CFString, 7, nil)
+        let df = DateFormatter()
+        df.locale = Locale(identifier: "tr_TR")
+        df.dateFormat = "dd.MM.yyyy"
+        let left = ctLine(title, small, black), right = ctLine("\(df.string(from: Date())) · MühenKit", small, black)
+        c.textPosition = CGPoint(x: margin + 4, y: margin + 4)
+        CTLineDraw(left, c)
+        c.textPosition = CGPoint(x: w - margin - 4 - CGFloat(CTLineGetTypographicBounds(right, nil, nil, nil)), y: margin + 4)
+        CTLineDraw(right, c)
+    }
+
+    /// Çizimi target dikdörtgenine sığdırarak çizer (sayfa ve önizleme ortak)
+    private static func drawContent(_ c: CGContext, _ target: CGRect, _ s: CadScene, _ hidden: Set<Int>, _ win: CGRect,
+                                    _ mono: Bool, lineWidth: CGFloat) {
         let ww = max(win.width, 1e-6), wh = max(win.height, 1e-6)
         let k = min(target.width / ww, target.height / wh)
         let ox = target.midX - win.midX * k, oy = target.midY - win.midY * k
@@ -96,7 +138,7 @@ enum Exporter {
         c.scaleBy(x: k, y: k)
         for (i, f) in s.fills.enumerated() where !hidden.contains(f.layer) {
             c.addPath(s.fillPaths[i])
-            c.setFillColor(color(f.rgb, o.monochrome, alpha: CGFloat(min(max(f.alpha, 0), 1))))
+            c.setFillColor(color(f.rgb, mono, alpha: CGFloat(min(max(f.alpha, 0), 1))))
             c.fillPath(using: .evenOdd)
         }
         c.setLineWidth(lineWidth / k)
@@ -105,7 +147,7 @@ enum Exporter {
         for (i, b) in s.batches.enumerated() where !hidden.contains(b.layer) && b.count >= 2 {
             if CGFloat(b.maxX) < win.minX || CGFloat(b.minX) > win.maxX || CGFloat(b.maxY) < win.minY || CGFloat(b.minY) > win.maxY { continue }
             c.addPath(s.batchPaths[i])
-            c.setStrokeColor(color(b.rgb, o.monochrome))
+            c.setStrokeColor(color(b.rgb, mono))
             c.strokePath()
         }
         c.restoreGState()
@@ -132,7 +174,7 @@ enum Exporter {
                 case 1: by = -CGFloat(n - 1 - i) * step
                 default: by = CGFloat(i) * step
                 }
-                let ct = ctLine(line, f2, color(t.rgb, o.monochrome))
+                let ct = ctLine(line, f2, color(t.rgb, mono))
                 let lw = CGFloat(CTLineGetTypographicBounds(ct, nil, nil, nil)) * wf
                 let ax: CGFloat = t.hAlign == 1 ? -lw / 2 : t.hAlign == 2 ? -lw : 0
                 c.saveGState()
@@ -146,24 +188,6 @@ enum Exporter {
             }
         }
         c.restoreGState()
-
-        // çerçeve ve alt bilgi
-        let black = CGColor(red: 0, green: 0, blue: 0, alpha: 1)
-        c.setStrokeColor(black)
-        c.setLineWidth(0.6)
-        c.stroke(CGRect(x: margin, y: margin, width: w - 2 * margin, height: h - 2 * margin))
-        c.move(to: CGPoint(x: margin, y: margin + footer))
-        c.addLine(to: CGPoint(x: w - margin, y: margin + footer))
-        c.strokePath()
-        let small = CTFontCreateWithName("Helvetica" as CFString, 7, nil)
-        let df = DateFormatter()
-        df.locale = Locale(identifier: "tr_TR")
-        df.dateFormat = "dd.MM.yyyy"
-        let left = ctLine(title, small, black), right = ctLine("\(df.string(from: Date())) · MühenKit", small, black)
-        c.textPosition = CGPoint(x: margin + 4, y: margin + 4)
-        CTLineDraw(left, c)
-        c.textPosition = CGPoint(x: w - margin - 4 - CGFloat(CTLineGetTypographicBounds(right, nil, nil, nil)), y: margin + 4)
-        CTLineDraw(right, c)
     }
 
     private static func ctLine(_ s: String, _ font: CTFont, _ color: CGColor) -> CTLine {

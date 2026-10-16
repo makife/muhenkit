@@ -1,5 +1,6 @@
 import SwiftUI
 import UniformTypeIdentifiers
+import ImageIO
 
 extension UTType {
     static let dxf = UTType(filenameExtension: "dxf") ?? .data
@@ -32,39 +33,39 @@ enum DxfImport {
     }
 }
 
-/// Projelerim: kayıtlı çizimler, yeni proje, DXF aç
+/// Projelerim: kayıtlı çizimler (önizlemeli kartlar, Android ile aynı), yeni proje, DXF aç
 struct ProjectsView: View {
     @EnvironmentObject private var nav: AppNav
     @State private var projects: [ProjectMeta] = []
+    @State private var thumbs: [String: CGImage] = [:]
     @State private var importing = false
     @State private var error: String?
     @State private var renaming: ProjectMeta?
+    @State private var deleting: ProjectMeta?
     @State private var newName = ""
 
     var body: some View {
-        List {
-            Section {
-                Button { newBlank() } label: { Label("Boş proje", systemImage: "doc.badge.plus") }
-                Button {
-                    do { open(try DxfImport.demo().id) } catch { self.error = error.localizedDescription }
-                } label: { Label("Örnek proje", systemImage: "sparkles") }
-                Button { importing = true } label: { Label("DXF aç", systemImage: "folder.badge.plus") }
-            }
-            Section(projects.isEmpty ? "Henüz proje yok" : "Kayıtlı projeler") {
-                ForEach(projects) { p in
-                    Button { open(p.id) } label: { row(p) }
-                        .buttonStyle(.plain)
-                        .contextMenu {
-                            Button("Yeniden adlandır") { newName = p.name; renaming = p }
-                            Button("Sil", role: .destructive) { ProjectStore.delete(p.id); reload() }
-                        }
+        ScrollView {
+            VStack(alignment: .leading, spacing: 14) {
+                HStack(spacing: 8) {
+                    action("DXF aç", "folder.badge.plus", filled: true) { importing = true }
+                    action("Boş proje", "doc.badge.plus") { newBlank() }
+                    action("Örnek", "sparkles") {
+                        do { open(try DxfImport.demo().id) } catch { self.error = error.localizedDescription }
+                    }
                 }
-                .onDelete { idx in
-                    for i in idx { ProjectStore.delete(projects[i].id) }
-                    reload()
+                if projects.isEmpty {
+                    Text("Henüz proje yok. Açtığın her DXF burada saklanır ve kaldığın yerden devam edersin.")
+                        .foregroundStyle(Theme.muted)
+                        .padding(8)
+                }
+                LazyVGrid(columns: [GridItem(.adaptive(minimum: 170), spacing: 10)], spacing: 10) {
+                    ForEach(projects) { p in card(p) }
                 }
             }
+            .padding(12)
         }
+        .background(Theme.page)
         .navigationTitle("Projelerim")
         .onAppear(perform: reload)
         .fileImporter(isPresented: $importing, allowedContentTypes: [.dxf, .data]) { r in
@@ -86,34 +87,116 @@ struct ProjectsView: View {
             }
             Button("Vazgeç", role: .cancel) { renaming = nil }
         }
+        .alert("Projeyi sil", isPresented: Binding(get: { deleting != nil }, set: { if !$0 { deleting = nil } })) {
+            Button("Sil", role: .destructive) {
+                if let p = deleting { ProjectStore.delete(p.id) }
+                deleting = nil
+                reload()
+            }
+            Button("İptal", role: .cancel) { deleting = nil }
+        } message: {
+            Text(deleteMessage)
+        }
     }
 
-    private func row(_ p: ProjectMeta) -> some View {
-        HStack(spacing: 12) {
-            Image(systemName: "doc.richtext")
-                .font(.title2)
-                .foregroundStyle(Theme.gold)
-                .frame(width: 44, height: 44)
-                .background(Theme.gold.opacity(0.1), in: RoundedRectangle(cornerRadius: 10))
-            VStack(alignment: .leading, spacing: 3) {
-                Text(p.name).font(.headline)
-                Text("\(Self.date(p.modified)) · \(ByteCountFormatter.string(fromByteCount: p.sizeBytes, countStyle: .file))")
-                    .font(.caption).foregroundStyle(Theme.muted)
-            }
-            Spacer()
-            if p.dirty { Image(systemName: "circle.fill").font(.system(size: 7)).foregroundStyle(Theme.accent) }
+    private var deleteMessage: String {
+        guard let p = deleting else { return "" }
+        return "\"\(p.name)\" Projelerim'den silinsin mi?"
+            + (p.source != nil ? " Orijinal DXF dosyan silinmez." : " Bu proje bir dosyaya kaydedilmedi; tamamen silinir.")
+    }
+
+    private func action(_ title: String, _ icon: String, filled: Bool = false, _ run: @escaping () -> Void) -> some View {
+        Button(action: run) {
+            Label(title, systemImage: icon)
+                .font(.subheadline.weight(.semibold))
+                .lineLimit(1)
+                .minimumScaleFactor(0.75)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 11)
+                .foregroundStyle(filled ? Bar.onPrimary : Theme.accent)
+                .background(filled ? Theme.accent : Color.clear, in: Capsule())
+                .overlay(Capsule().stroke(Theme.accent.opacity(filled ? 0 : 0.6), lineWidth: 1))
+                .contentShape(Capsule())
         }
-        .contentShape(Rectangle())
+        .buttonStyle(.plain)
+    }
+
+    private func card(_ p: ProjectMeta) -> some View {
+        VStack(spacing: 0) {
+            ZStack {
+                Color.white
+                if let img = thumbs[p.id] {
+                    Image(decorative: img, scale: 1).resizable().scaledToFit()
+                } else {
+                    Image(systemName: "pencil.and.ruler").font(.system(size: 34)).foregroundStyle(Bar.onSurfaceVariant)
+                }
+            }
+            .aspectRatio(1.6, contentMode: .fit)
+            HStack(spacing: 4) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(p.name).font(.subheadline.bold()).lineLimit(1).truncationMode(.tail)
+                    Text(Self.date(p.modified)).font(.caption2).foregroundStyle(Theme.muted)
+                    if p.dirty {
+                        Text("Dosyaya kaydedilmedi").font(.caption2).foregroundStyle(Theme.accent)
+                    } else if p.source == nil {
+                        Text("Yalnız uygulamada").font(.caption2).foregroundStyle(Theme.muted)
+                    }
+                }
+                Spacer(minLength: 0)
+                Menu {
+                    Button { open(p.id) } label: { Label("Aç", systemImage: "pencil") }
+                    Button { newName = p.name; renaming = p } label: { Label("Yeniden adlandır", systemImage: "character.cursor.ibeam") }
+                    Button(role: .destructive) { deleting = p } label: { Label("Sil", systemImage: "trash") }
+                } label: {
+                    Image(systemName: "ellipsis")
+                        .rotationEffect(.degrees(90))
+                        .frame(width: 36, height: 36)
+                        .contentShape(Rectangle())
+                }
+                .menuStyle(.borderlessButton)
+                .fixedSize()
+            }
+            .padding(.leading, 10)
+            .padding(.vertical, 6)
+            .padding(.trailing, 2)
+        }
+        .background(Theme.surface)
+        .clipShape(RoundedRectangle(cornerRadius: 14))
+        .overlay(RoundedRectangle(cornerRadius: 14).stroke(Color.white.opacity(0.13), lineWidth: 1))
+        .contentShape(RoundedRectangle(cornerRadius: 14))
+        .onTapGesture { open(p.id) }
+        .contextMenu {
+            Button("Yeniden adlandır") { newName = p.name; renaming = p }
+            Button("Sil", role: .destructive) { deleting = p }
+        }
     }
 
     static func date(_ ms: Int64) -> String {
         let f = DateFormatter()
         f.locale = Locale(identifier: "tr_TR")
-        f.dateFormat = "d MMM yyyy HH:mm"
+        f.dateFormat = "dd.MM.yyyy HH:mm"
         return f.string(from: Date(timeIntervalSince1970: Double(ms) / 1000))
     }
 
-    private func reload() { projects = ProjectStore.list() }
+    private func reload() {
+        let list = ProjectStore.list()
+        projects = list
+        // önizlemeler arka planda yüklenir; önizlemesi olmayan (eski sürümden kalan) projelerinki bir kez üretilir
+        Task.detached(priority: .utility) {
+            for p in list {
+                let url = ProjectStore.thumb(p.id)
+                if !FileManager.default.fileExists(atPath: url.path),
+                   let data = try? ProjectStore.read(p.id),
+                   let d = try? CadDocument.open(name: p.name, data: data), let s = d.scene,
+                   let png = Exporter.thumbnail(s, hidden: Set(p.hidden ?? [])) {
+                    ProjectStore.writeThumb(p.id, png)
+                }
+                guard let src = CGImageSourceCreateWithURL(url as CFURL, [kCGImageSourceShouldCache: false] as CFDictionary),
+                      let img = CGImageSourceCreateImageAtIndex(src, 0, nil) else { continue }
+                await MainActor.run { thumbs[p.id] = img }
+            }
+        }
+    }
 
     private func open(_ id: String) { nav.path.append(.cad(id)) }
 
