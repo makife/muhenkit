@@ -9,7 +9,7 @@ Kullanıcı Türk elektrik mühendisi; iletişim **Türkçe**. Kod yorumları ve
 |---|---|
 | `core/mkcad` | C++17 DXF motoru: okuma, sahne (çizgi/dolgu/yazı tamponları), düzenleme, geri al, blok/sembol, yazma. C arayüzü `include/mkcad.h` |
 | `core/mkcalc` | C++ hesap çekirdeği: `mc_calc(modül, "anahtar=değer" satırları)`, `mc_table(ad)`. Tüm platformlar aynı formülleri çalıştırır |
-| `core/content` | Ortak içerik: `symbols.dat` (sembol kütüphanesi), `guides.json` (rehberler), `img/`, `brand/` (simgeler), `blank.dxf`, `demo.dxf` (Örnek proje; Windows `MUHENKIT_SELFTEST=demo` + `MUHENKIT_DEMO_OUT` ile üretilir) |
+| `core/content` | Ortak içerik: `symbols.dat` (sembol kütüphanesi), `guides.json` (rehberler), `img/`, `brand/` (simgeler), `blank.dxf`, `demo.dxf` (Örnek proje — Projelerim'de üç platformda da "Örnek proje" düğmesi; Windows `MUHENKIT_SELFTEST=demo` + `MUHENKIT_DEMO_OUT` ile üretilir) |
 | `android/` | Kotlin + Jetpack Compose. JNI köprüsü `app/src/main/cpp`. Çizim OpenGL (`cad/CadGlView.kt`) |
 | `windows/MuhenKit` | C# WinUI 3 + Win2D. Çekirdek `windows/native/x64/mkcore.dll` (P/Invoke, `Core/Native.cs`) |
 | `apple/` | Tek SwiftUI kodu → iOS (16+) ve macOS (13+) hedefleri. XcodeGen (`project.yml`), çekirdek Bridging.h ile doğrudan derlenir |
@@ -40,17 +40,19 @@ Windows test bayrakları: `MuhenKit.exe <dxf>` · `--projeler` · `--modul=<Rout
 
 ## CI (GitHub Actions, depo makife/muhenkit)
 
+Dört iş akışı, her biri bir platform (hepsi main'e gönderimde ilgili klasör değişince çalışır, elle de başlatılabilir):
 - `android.yml`: imzalı APK + AAB (Play yükleme anahtarı secrets'tan; `VERSION_CODE` = run_number), ardından `.github/play_upload.py` ile
   Play **Kapalı test (alpha)** kanalına yükler (hizmet hesabı muhenkit-play@bielat-1c00a, secret `PLAY_SERVICE_ACCOUNT_JSON`;
   uygulama yayınlanmamışsa taslak olarak). Yerelde erişim denetimi: `python .github/play_upload.py <json> com.ergan.muhenkitelektrik - alpha`
 - `windows.yml`: mkcore.dll + WinUI derlemesi
-- `apple.yml`: **macos-26 + Xcode 26** (App Store iOS 26 SDK şartı), macOS ve iOS derleme denetimi
-- `testflight.yml`: iOS arşivi imzasız → `exportArchive` (otomatik dağıtım imzası, API anahtarı) → `.github/asc_upload.py`
-  ile **App Store Connect API Build Uploads** (altool JWT'yi reddediyor, kullanma). Her apple/core gönderiminde çalışır.
-  Aynı dosyada `mac` işi: Mac App Store (ayrı satış) — depo değişkeni `ASC_MAC_APP_ID` = 6823622933 (.pkg, platform MAC_OS; mağaza adı "MühenKit Elektrik Mac", ilk yükleme yapı 26).
-- `asc-status.yml` (elle): App Store'daki yapıların işleme durumu/hataları (`.github/asc_status.py`) — "TestFlight'ta yok" denirse önce buna bak.
-- `ipad-ekran.yml` (elle): iPad Pro 13" simülatöründe mağaza görüntüleri çeker (uygulama `-mkScreen home|cad|projects|<RouteId>` açılış
-  parametresiyle ekranı örnek projeyle açar); artifact `ipad-ekranlar`.
+- `ios.yml`: **macos-26 + Xcode 26** (App Store iOS 26 SDK şartı). iOS arşivi imzasız → `exportArchive` (otomatik dağıtım imzası,
+  API anahtarı) → `.github/asc_upload.py` ile **App Store Connect API Build Uploads** → TestFlight (altool JWT'yi reddediyor, kullanma).
+  Elle başlatmada `islem` seçimi: `yukle` | `durum` (App Store'daki iOS+Mac yapılarının işleme durumu, `.github/asc_status.py` —
+  "TestFlight'ta yok" denirse önce buna bak) | `ekran` (iPad Pro 13" simülatöründe mağaza görüntüleri; uygulama
+  `-mkScreen home|cad|projects|<RouteId>` açılış parametresiyle ekranı örnek projeyle açar; artifact `ipad-ekranlar`).
+- `macos.yml`: Mac App Store (ayrı satış) — .pkg, platform MAC_OS; depo değişkeni `ASC_MAC_APP_ID` = 6823622933
+  (mağaza adı "MühenKit Elektrik Mac"; ilk yükleme yapı 26).
+- iOS/macOS yapı numarası = run_number + 100 (eski testflight.yml 26'ya kadar kullandı; numara geriye düşerse App Store reddeder).
 - Derleme hataları `.github/report.sh` ile annotation olarak yazılır (günlük indirmeden okunur).
 
 Secrets: `PLAY_SERVICE_ACCOUNT_JSON`, `ASC_KEY_ID`, `ASC_ISSUER_ID`, `ASC_KEY_P8`, `APPLE_TEAM_ID`, `ANDROID_KEYSTORE_B64`, `ANDROID_KEYSTORE_PASSWORD`,

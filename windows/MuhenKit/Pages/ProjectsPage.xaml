@@ -22,6 +22,9 @@
             </StackPanel>
             <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
                 <TextBox x:Name="Search" PlaceholderText="Proje ara…" Width="220" TextChanged="OnSearch"/>
+                <Button Click="OnDemo" ToolTipService.ToolTip="2+1 daire: semboller, tablolar, antet">
+                    <StackPanel Orientation="Horizontal" Spacing="8"><FontIcon Glyph="&#xE734;" FontSize="14"/><TextBlock Text="Örnek proje"/></StackPanel>
+                </Button>
                 <Button Click="OnOpenDxf">
                     <StackPanel Orientation="Horizontal" Spacing="8"><FontIcon Glyph="&#xE8E5;" FontSize="14"/><TextBlock Text="DXF aç"/></StackPanel>
                 </Button>

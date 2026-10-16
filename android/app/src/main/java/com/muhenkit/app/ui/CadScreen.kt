@@ -60,6 +60,7 @@ sealed interface CadRequest {
     data class OpenUri(val uri: Uri) : CadRequest
     data class OpenProject(val id: String) : CadRequest
     data object NewBlank : CadRequest
+    data object Demo : CadRequest
     /** Ana sayfadan "DXF Çizim": son projeye devam */
     data object ResumeLast : CadRequest
 }
@@ -183,6 +184,7 @@ fun CadScreen(request: CadRequest?, onExit: () -> Unit = {}) {
             is CadRequest.OpenUri -> ed.open(request.uri)
             is CadRequest.OpenProject -> ed.openProject(request.id)
             CadRequest.NewBlank -> ed.newBlank()
+            CadRequest.Demo -> ed.openDemo()
             CadRequest.ResumeLast -> com.muhenkit.app.cad.ProjectStore.lastProject(context)?.let { ed.openProject(it) }
             null -> {}
         }

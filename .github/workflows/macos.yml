@@ -1,0 +1,62 @@
+name: macOS
+
+# Mac App Store (iOS'tan ayrı kayıt, ayrı satış: com.ergan.muhenkitelektrik.mac, depo değişkeni ASC_MAC_APP_ID).
+# Her apple/core gönderiminde derlenip App Store Connect'e (.pkg) yüklenir. Gizliler iOS ile aynı.
+on:
+  push:
+    branches: [main]
+    paths: ["apple/**", "core/**", ".github/workflows/macos.yml", ".github/asc_upload.py", ".github/report.sh"]
+  workflow_dispatch:
+
+jobs:
+  appstore:
+    runs-on: macos-26
+    env:
+      ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+      ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+      ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
+      TEAM: ${{ secrets.APPLE_TEAM_ID }}
+      MAC_APP_ID: ${{ vars.ASC_MAC_APP_ID }}
+    steps:
+      - uses: actions/checkout@v5
+      - name: Xcode 26 seç
+        run: |
+          X=$(ls -d /Applications/Xcode_26*.app 2>/dev/null | sort -V | tail -1)
+          [ -n "$X" ] && sudo xcode-select -s "$X"
+          xcodebuild -version
+      - name: Arşivle ve yükle (macOS)
+        working-directory: apple
+        run: |
+          brew install xcodegen
+          xcodegen generate
+          # yapı numarası: eski testflight.yml yapı 26'ya ulaştı; yeni iş akışının sayacı 1'den başlar → +100
+          BUILD=$((GITHUB_RUN_NUMBER + 100))
+          export ASC_KEY_ID=$(printf '%s' "$ASC_KEY_ID" | tr -d '[:space:]') ASC_ISSUER_ID=$(printf '%s' "$ASC_ISSUER_ID" | tr -d '[:space:]') TEAM=$(printf '%s' "$TEAM" | tr -d '[:space:]')
+          mkdir -p ~/private_keys
+          export KEY="$HOME/private_keys/AuthKey_$ASC_KEY_ID.p8"
+          printf '%s\n' "$ASC_KEY_P8" | tr -d '\r' | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//' | grep -v '^$' > "$KEY"
+          AUTH=(-allowProvisioningUpdates -authenticationKeyPath "$KEY" -authenticationKeyID "$ASC_KEY_ID" -authenticationKeyIssuerID "$ASC_ISSUER_ID")
+          xcodebuild -project MuhenKit.xcodeproj -scheme MuhenKit-macOS -configuration Release \
+            -destination 'generic/platform=macOS' -archivePath build/MuhenKitMac.xcarchive \
+            DEVELOPMENT_TEAM="$TEAM" CURRENT_PROJECT_VERSION="$BUILD" CODE_SIGNING_ALLOWED=NO \
+            archive > archive.log 2>&1 || { bash ../.github/report.sh archive.log; exit 1; }
+          cat > ExportOptions.plist <<PLIST
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0"><dict>
+            <key>method</key><string>app-store-connect</string>
+            <key>destination</key><string>export</string>
+            <key>teamID</key><string>$TEAM</string>
+            <key>signingStyle</key><string>automatic</string>
+            <key>manageAppVersionAndBuildNumber</key><false/>
+          </dict></plist>
+          PLIST
+          xcodebuild -exportArchive -archivePath build/MuhenKitMac.xcarchive -exportOptionsPlist ExportOptions.plist \
+            -exportPath build/export "${AUTH[@]}" > export.log 2>&1 || { bash ../.github/report.sh export.log; exit 1; }
+          PKG=$(ls build/export/*.pkg | head -1)
+          VER=$(/usr/libexec/PlistBuddy -c "Print :ApplicationProperties:CFBundleShortVersionString" build/MuhenKitMac.xcarchive/Info.plist)
+          python3 -m pip install --quiet --break-system-packages pyjwt cryptography 2>/dev/null || python3 -m pip install --quiet pyjwt cryptography
+          python3 ../.github/asc_upload.py "$PKG" "$MAC_APP_ID" "$VER" "$BUILD" MAC_OS > upload.log 2>&1 \
+            || { cat upload.log; bash ../.github/report.sh upload.log; exit 1; }
+          cat upload.log
+          echo "::notice::Mac yapısı $BUILD yüklendi."

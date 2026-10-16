@@ -178,6 +178,18 @@ public sealed partial class ProjectsPage : Page
         if (f != null) (Application.Current as App)?.Navigate(typeof(CadPage), f.Path);
     }
 
+    /// <summary>Örnek proje (core/content/demo.dxf): 2+1 daire, semboller, tablolar, antet. Varsa mevcut olanı açar.</summary>
+    private void OnDemo(object sender, RoutedEventArgs e)
+    {
+        var m = ProjectStore.List().FirstOrDefault(p => p.Name == "Örnek proje");
+        if (m == null)
+        {
+            var bytes = File.ReadAllBytes(Path.Combine(AppContext.BaseDirectory, "content", "demo.dxf"));
+            m = ProjectStore.Create("Örnek proje", bytes, null);
+        }
+        Open(m);
+    }
+
     private void OnNew(object sender, RoutedEventArgs e) => (Application.Current as App)?.Navigate(typeof(CadPage), new CadRequest.Blank());
 
     private void OnHome(object sender, RoutedEventArgs e) => (Application.Current as App)?.GoHome();

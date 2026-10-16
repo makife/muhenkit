@@ -75,6 +75,11 @@ fun ProjectsScreen(onBack: () -> Unit, onOpen: (CadRequest) -> Unit) {
                     }
                 }
             }
+            item(span = { GridItemSpan(maxLineSpan) }) {
+                OutlinedButton(onClick = { onOpen(CadRequest.Demo) }, modifier = Modifier.fillMaxWidth()) {
+                    Icon(Icons.Outlined.AutoAwesome, null); Spacer(Modifier.width(6.dp)); Text("Örnek proje")
+                }
+            }
             val l = list
             if (l != null && l.isEmpty()) item(span = { GridItemSpan(maxLineSpan) }) {
                 Text(

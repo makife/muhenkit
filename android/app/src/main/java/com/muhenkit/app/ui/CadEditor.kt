@@ -161,6 +161,18 @@ class CadEditor(private val context: Context, private val scope: CoroutineScope)
         }
     }
 
+    /** Örnek proje (core/content/demo.dxf: 2+1 daire, semboller, tablolar, antet); varsa mevcut olanı açar */
+    fun openDemo() = load {
+        withContext(Dispatchers.IO) {
+            val m = ProjectStore.list(context).firstOrNull { it.name == "Örnek proje" }
+            if (m != null) m to ProjectStore.read(context, m.id)
+            else {
+                val bytes = context.assets.open("demo.dxf").use { it.readBytes() }
+                ProjectStore.create(context, "Örnek proje", bytes, null) to bytes
+            }
+        }
+    }
+
     /** Ortak açma: önce açık çizimi kaydet, sonra yükle */
     private fun load(source: suspend () -> Pair<ProjectMeta, ByteArray>) {
         if (loading) return
