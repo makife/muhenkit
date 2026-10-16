@@ -434,6 +434,7 @@ public sealed partial class CadPage : Page
         }
         catch (Exception ex)
         {
+            App.Log("açma: " + ex);
             _pendingMessage = null;
             EmptyState.Visibility = Visibility.Visible;
             EmptyText.Text = ex is CadException ? ex.Message : "Dosya açılamadı: " + ex.Message;
