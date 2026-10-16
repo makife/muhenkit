@@ -22,3 +22,4 @@ windows/native/x64/
 
 # Windows ayrılmış ad (yanlışlıkla oluşan)
 nul
+__pycache__/
