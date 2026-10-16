@@ -139,11 +139,24 @@ public sealed class CadCanvas : Grid
         return (v.Cx - hw, v.Cy - hh, v.Cx + hw, v.Cy + hh);
     }
 
+    /// <summary>
+    /// Tuvalin grafik aygıtı; henüz oluşmadıysa null (CanvasControl.Device bu durumda null değil ArgumentException veriyor:
+    /// proje tuval yüklenmeden hızlı açılınca "Dosya açılamadı: Parametre hatalı"). Aygıt gelince CreateResources geometriyi kurar.
+    /// </summary>
+    private CanvasDevice? Device
+    {
+        get
+        {
+            try { return _canvas.Device; }
+            catch (ArgumentException) { return null; }
+        }
+    }
+
     private void BuildGeometry()
     {
         var s = _scene;
-        if (s == null || _canvas.Device == null) return;
-        var dev = _canvas.Device;
+        var dev = Device;
+        if (s == null || dev == null) return;
         var v = s.Vertices;
         foreach (var g in _batchGeo) g?.Dispose();
         foreach (var g in _fillGeo) g?.Dispose();
@@ -262,8 +275,9 @@ public sealed class CadCanvas : Grid
 
     private CanvasGeometry? Segs(float[] a)
     {
-        if (a.Length < 4 || _canvas.Device == null) return null;
-        using var pb = new CanvasPathBuilder(_canvas.Device);
+        var dev = Device;
+        if (a.Length < 4 || dev == null) return null;
+        using var pb = new CanvasPathBuilder(dev);
         for (int i = 0; i + 3 < a.Length; i += 4)
         {
             pb.BeginFigure(a[i], a[i + 1]);
