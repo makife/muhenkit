@@ -689,28 +689,40 @@ public sealed partial class CadPage : Page
     /// <summary>
     /// Dosyaya yaz. Seçicinin verdiği dosya önce StorageFile üzerinden yazılır: bazı klasörlerde (İndirilenler, OneDrive,
     /// virüs koruması) doğrudan yazma "Access denied" veriyor ve seçicinin açtığı 0 baytlık dosya "bozuk" olarak kalıyordu.
-    /// Hepsi başarısız olursa boş dosya silinir.
+    /// Engellenirse "Tekrar dene" sorulur (virüs programında "İzin ver" denince ikinci deneme geçer); vazgeçilirse boş dosya silinir.
     /// </summary>
-    private static async Task WriteBytes(string path, byte[] bytes, Windows.Storage.StorageFile? file)
+    private async Task WriteBytes(string path, byte[] bytes, Windows.Storage.StorageFile? file)
     {
-        Exception? first = null;
-        if (file != null)
+        while (true)
         {
-            try { await Windows.Storage.FileIO.WriteBytesAsync(file, bytes); return; }
-            catch (Exception ex) { first = ex; App.Log("StorageFile yazma: " + ex.Message); }
-        }
-        for (int i = 0; i < 3; i++)
-        {
-            try { await File.WriteAllBytesAsync(path, bytes); return; }
-            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            Exception? err = null;
+            if (file != null)
             {
-                first ??= ex;
-                await Task.Delay(300);
+                try { await Windows.Storage.FileIO.WriteBytesAsync(file, bytes); return; }
+                catch (Exception ex) { err = ex; App.Log("StorageFile yazma: " + ex.Message); }
+            }
+            try { await File.WriteAllBytesAsync(path, bytes); return; }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { err ??= ex; }
+
+            var dlg = new ContentDialog
+            {
+                XamlRoot = XamlRoot, Title = "Dosya yazılamadı",
+                Content = new TextBlock
+                {
+                    TextWrapping = TextWrapping.Wrap, MaxWidth = 420,
+                    Text = $"\"{Path.GetFileName(path)}\" bu klasöre yazılamadı. Virüs programının fidye yazılımı koruması (AVG, Avast, " +
+                           "Defender…) İndirilenler/Belgeler/Resimler klasörlerini koruyor olabilir.\n\n" +
+                           "Virüs programında MühenKit'e izin verdiyseniz \"Tekrar dene\"ye basın; ya da başka bir klasör seçin.",
+                },
+                PrimaryButtonText = "Tekrar dene", CloseButtonText = "Vazgeç",
+                DefaultButton = ContentDialogButton.Primary, RequestedTheme = ElementTheme.Dark,
+            };
+            if (await dlg.ShowAsync() != ContentDialogResult.Primary)
+            {
+                try { if (File.Exists(path) && new FileInfo(path).Length == 0) File.Delete(path); } catch { }
+                throw new IOException("Dosya yazılamadı: klasöre yazma engellendi. Başka bir klasör seçin.", err);
             }
         }
-        try { if (File.Exists(path) && new FileInfo(path).Length == 0) File.Delete(path); } catch { }
-        throw new IOException("Dosya yazılamadı: bu klasöre yazma engellendi. Virüs programının fidye yazılımı koruması (AVG, Avast, Defender…) " +
-            "İndirilenler/Belgeler/Resimler klasörlerini koruyor olabilir; MühenKit'e izin verin ya da başka bir klasör seçin.", first);
     }
 
     /// <summary>MUHENKIT_SELFTEST=e: açık çizimi %TEMP%'e PDF ve PNG olarak çıkarır</summary>
