@@ -14,6 +14,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import com.muhenkit.app.ui.AppRoot
 import com.muhenkit.app.ui.MuhenKitTheme
+import com.muhenkit.app.ui.clearFocusOnTap
 
 class MainActivity : ComponentActivity() {
     /** Dosya yöneticisinden "Birlikte aç" ile gelen DXF. */
@@ -29,6 +30,7 @@ class MainActivity : ComponentActivity() {
                 // Surface: renk belirtilmeyen tüm yazı ve simgeler koyu zeminde açık renk olsun
                 // (yoksa varsayılan siyah kalıyor ve okunmuyordu)
                 androidx.compose.material3.Surface(
+                    modifier = androidx.compose.ui.Modifier.clearFocusOnTap(),
                     color = androidx.compose.material3.MaterialTheme.colorScheme.background,
                     contentColor = androidx.compose.material3.MaterialTheme.colorScheme.onSurface,
                 ) {

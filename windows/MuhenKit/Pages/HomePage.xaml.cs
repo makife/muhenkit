@@ -83,8 +83,11 @@ public sealed partial class HomePage : Page
         _paths = BuildPaths();
         _content.Height = totalH;
         _canvas.Height = totalH;
-        _layer.Children.Clear();
-        Place(_mcuChip ??= McuChip(), _mcu, inset: new Thickness(10, 8, 10, 8));
+        // MCU çipi ağaçta kalmalı: çıkarılıp geri eklenirse arama kutusu her harfte odağını kaybediyordu
+        if (_mcuChip == null) _layer.Children.Add(_mcuChip = McuChip());
+        for (int k = _layer.Children.Count - 1; k >= 0; k--)
+            if (_layer.Children[k] != _mcuChip) _layer.Children.RemoveAt(k);
+        Place(_mcuChip, _mcu, inset: new Thickness(10, 8, 10, 8), add: false);
         for (int i = 0; i < _list.Count; i++) Place(ModuleChip(i, _list[i]), _chips[i], inset: new Thickness(2, 7, 2, 7));
         if (_list.Count == 0)
             Place(new TextBlock { Text = "EŞLEŞEN MODÜL YOK", Foreground = new SolidColorBrush(SilkDim), CharacterSpacing = 200, HorizontalAlignment = HorizontalAlignment.Center },
@@ -94,13 +97,13 @@ public sealed partial class HomePage : Page
         _canvas.Invalidate();
     }
 
-    private void Place(FrameworkElement e, Rect r, Thickness inset)
+    private void Place(FrameworkElement e, Rect r, Thickness inset, bool add = true)
     {
         e.Width = Math.Max(0, r.Width - inset.Left - inset.Right);
         e.Height = Math.Max(0, r.Height - inset.Top - inset.Bottom);
         Canvas.SetLeft(e, r.X + inset.Left);
         Canvas.SetTop(e, r.Y + inset.Top);
-        _layer.Children.Add(e);
+        if (add) _layer.Children.Add(e);
     }
 
     /// <summary>MCU'dan her çipe 45° kırılımlı bakır yol</summary>

@@ -60,7 +60,12 @@ struct MuhenKitApp: App {
                     }
             }
             .environmentObject(nav)
-            .task { openLaunchScreen() }
+            .task {
+                #if os(iOS)
+                KeyboardDismisser.shared.install()
+                #endif
+                openLaunchScreen()
+            }
             .preferredColorScheme(.dark)
             .tint(Theme.accent)
             #if os(macOS)

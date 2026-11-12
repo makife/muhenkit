@@ -67,7 +67,7 @@ fun TableChooser(onPick: (TableKind) -> Unit) {
 @Composable
 private fun FormDialog(title: String, onDismiss: () -> Unit, onDone: () -> Unit, content: @Composable ColumnScope.() -> Unit) {
     Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
-        Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
+        Surface(Modifier.fillMaxSize().clearFocusOnTap(), color = MaterialTheme.colorScheme.background) {
             Column(Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding().imePadding()) {
                 TopAppBar(
                     title = { Text(title) },
