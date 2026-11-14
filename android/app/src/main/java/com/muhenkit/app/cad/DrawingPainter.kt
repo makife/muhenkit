@@ -12,15 +12,12 @@ import kotlin.math.min
 /**
  * Çizimi bir Android Canvas'a vektör olarak çizer: PDF sayfası (PdfDocument) ve PNG (Bitmap)
  * aynı kodu kullanır. Beyaz kâğıt varsayılır.
- *
- * @param window çizilecek dünya penceresi (göreli koordinat): x0, y0, x1, y1
- * @param target sayfadaki hedef dikdörtgen (Canvas birimi; PDF'te punto)
  */
 class DrawingPainter(
     private val scene: CadScene,
     private val hidden: Set<Int>,
     private val monochrome: Boolean,
-    /** Çizgi kalınlığı (Canvas birimi) */
+    /** [draw] için çizgi kalınlığı (Canvas birimi) */
     private val lineWidth: Float,
 ) {
     private fun color(rgb: Int): Int {
@@ -33,6 +30,11 @@ class DrawingPainter(
         return if (r * 299 + g * 587 + b * 114 > 200_000) Color.BLACK else (0xFF000000.toInt() or c)
     }
 
+    /**
+     * Pencereyi hedefe sığdırarak çizer (önizleme).
+     * @param window çizilecek dünya penceresi (göreli koordinat): x0, y0, x1, y1
+     * @param target sayfadaki hedef dikdörtgen (Canvas birimi; PDF'te punto)
+     */
     fun draw(canvas: Canvas, window: RectF, target: RectF) {
         val ww = window.width().coerceAtLeast(1e-6f)
         val wh = window.height().coerceAtLeast(1e-6f)
@@ -40,9 +42,23 @@ class DrawingPainter(
         // dünya → sayfa: x' = ox + x·k, y' = oy − y·k (Y yukarı)
         val ox = target.centerX() - (window.left + ww / 2) * k
         val oy = target.centerY() + (window.top + wh / 2) * k
-
         canvas.save()
         canvas.clipRect(target)
+        drawAt(canvas, k, ox, oy, null, null, null) { lineWidth }
+        canvas.restore()
+    }
+
+    /**
+     * Sahneyi x' = ox + x·k, y' = oy − y·k dönüşümüyle çizer.
+     * @param cull bu dünya penceresinden çok uzaktaki yazıları atla
+     * @param owner ilkelin sahip nesnesine göre süzgeç (antet ayrı çizilirken)
+     * @param scaleText antetteki "1/50" gibi ölçek yazılarının yerine yazılacak değer
+     * @param lw DXF kalınlığından (1/100 mm, -3 tanımsız) sayfa birimine çizgi kalınlığı
+     */
+    fun drawAt(
+        canvas: Canvas, k: Float, ox: Float, oy: Float, cull: RectF?, owner: ((Int) -> Boolean)?, scaleText: String?,
+        lw: (Int) -> Float,
+    ) {
         canvas.save()
         canvas.translate(ox, oy)
         canvas.scale(k, -k)
@@ -51,7 +67,7 @@ class DrawingPainter(
         // dolgular
         val fillPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.FILL }
         for (f in scene.fills) {
-            if (f.layer in hidden) continue
+            if (f.layer in hidden || (owner != null && !owner(f.owner))) continue
             val path = Path().apply { fillType = Path.FillType.EVEN_ODD }
             for (j in f.loopFirst.indices) {
                 val first = f.loopFirst[j]
@@ -68,12 +84,26 @@ class DrawingPainter(
         // çizgiler: kalınlık sayfa biriminde sabit
         val linePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             style = Paint.Style.STROKE
-            strokeWidth = lineWidth / k
             strokeCap = Paint.Cap.ROUND
         }
         for (b in scene.batches) {
             if (b.layer in hidden) continue
             linePaint.color = color(b.rgb)
+            linePaint.strokeWidth = lw(b.lweight) / k
+            if (owner != null) {
+                // süzgeçli: yalnız uyan parçaları topla
+                val seg = FloatArray(b.count * 2)
+                var n = 0
+                var i = b.first
+                while (i + 1 < b.first + b.count) {
+                    if (owner(scene.ownerOfVertex(i))) {
+                        seg[n++] = v[i * 2]; seg[n++] = v[i * 2 + 1]; seg[n++] = v[i * 2 + 2]; seg[n++] = v[i * 2 + 3]
+                    }
+                    i += 2
+                }
+                if (n > 0) canvas.drawLines(seg, 0, n, linePaint)
+                continue
+            }
             // drawLines tek çağrıda en çok ~16 bin parça: büyük partileri böl
             var o = b.first
             val end = b.first + b.count
@@ -92,8 +122,13 @@ class DrawingPainter(
         val bounds = Rect()
         tp.getTextBounds("H", 0, 1, bounds)
         val capRatio = bounds.height() / 100f
-        for (t in scene.texts) {
-            if (t.layer in hidden) continue
+        for (t0 in scene.texts) {
+            if (t0.layer in hidden || (owner != null && !owner(t0.owner))) continue
+            if (cull != null) {
+                val m = t0.height * 60
+                if (t0.x < cull.left - m || t0.x > cull.right + m || t0.y < cull.top - m || t0.y > cull.bottom + m) continue
+            }
+            val t = if (scaleText != null && SCALE_TEXT.matches(t0.text)) t0.copyText(scaleText) else t0
             val capPx = t.height * k
             if (capPx < 0.3f) continue
             tp.color = color(t.rgb)
@@ -118,8 +153,10 @@ class DrawingPainter(
             }
             canvas.restore()
         }
-        canvas.restore()
     }
+
+    private fun CadText.copyText(s: String) =
+        CadText(x, y, height, rotation, widthFactor, boxWidth, layer, rgb, halign, valign, s, owner)
 
     private fun wrap(t: CadText, p: Paint, k: Float): List<String> {
         val raw = t.text.split('\n')
@@ -142,5 +179,9 @@ class DrawingPainter(
             out.add(sb.toString())
         }
         return out
+    }
+
+    private companion object {
+        val SCALE_TEXT = Regex("""^\s*1\s*[/:]\s*\d+([.,]\d+)?\s*$""")
     }
 }

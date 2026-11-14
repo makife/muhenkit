@@ -321,6 +321,9 @@ public sealed class CadEditor : ICanvasInput
         if (ids.Count > 0) Edit(d => d.SetColor(ids, aci));
     }
 
+    /// <summary>Katman çizgi kalınlığı (1/100 mm, -3 varsayılan); geri alınamaz</summary>
+    public void SetLayerLWeight(int layer, int lw) => Edit(d => d.SetLayerLWeight(layer, lw));
+
     /// <summary>Tek bir yazı seçiliyse (kimlik, içerik)</summary>
     public (int Id, string Text)? SelectedText()
     {

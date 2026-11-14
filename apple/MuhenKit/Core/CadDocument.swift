@@ -6,6 +6,8 @@ struct CadLayer {
     let rgb: UInt32
     let offInFile: Bool
     let count: Int
+    /// Çizgi kalınlığı 1/100 mm, -3 tanımsız (çıktıda varsayılan kalınlık)
+    var lweight: Int = -3
 }
 
 /// Çizgi partisi: vertices içinde [first, first+count) noktaları, (x1,y1,x2,y2) çiftleri
@@ -15,6 +17,8 @@ struct LineBatch {
     let first: Int
     let count: Int
     let minX: Float, minY: Float, maxX: Float, maxY: Float
+    /// Çizgi kalınlığı 1/100 mm, -3 tanımsız
+    var lweight: Int = -3
 }
 
 struct FillGroup {
@@ -23,6 +27,8 @@ struct FillGroup {
     let alpha: Float
     let loopFirst: [Int]
     let loopCount: [Int]
+    /// Üst düzey nesne kimliği (mk_pick ile aynı)
+    var owner: Int = -1
 }
 
 struct CadText {
@@ -30,7 +36,8 @@ struct CadText {
     let layer: Int
     let rgb: UInt32
     let hAlign: Int, vAlign: Int
-    let text: String
+    var text: String
+    var owner: Int = -1
 }
 
 /// Çizilmeye hazır sahne. Koordinatlardan köken (originX/Y) çıkarılmıştır: büyük (UTM) koordinatlarda
@@ -46,6 +53,18 @@ final class CadScene {
     let texts: [CadText]
     let minX: Float, minY: Float, maxX: Float, maxY: Float
     let parseMs: Int
+    /// Çizgi parçası başına sahip nesne: köşe i'nin parçası segOwners[i / 2]
+    var segOwners: [Int32] = []
+    /// Çizim birimi ($INSUNITS): 4 mm, 5 cm, 6 m, 1 inç, 2 ayak; 0/-1 belirtilmemiş
+    var units = -1
+    /// Son eklenen firma anteti (MK_TBL_ANTET_ bloğu) nesne kimliği; yoksa -1
+    var titleBlock = -1
+
+    /// Köşe indeksinin (vertices'teki nokta sırası) ait olduğu üst düzey nesne
+    func owner(ofVertex i: Int) -> Int {
+        let k = i / 2
+        return k < segOwners.count ? Int(segOwners[k]) : -1
+    }
 
     init(name: String, version: String, entityCount: Int, layers: [CadLayer], vertices: [Float], batches: [LineBatch],
          fills: [FillGroup], texts: [CadText], minX: Float, minY: Float, maxX: Float, maxY: Float, parseMs: Int) {
@@ -292,6 +311,8 @@ final class CadDocument {
     func setLayer(_ ids: [Int], _ layer: String) { locked { _ = withIds(ids) { mk_set_layer($0, $1, $2, layer) } } }
     /// aci: 1–255, 256 = katman rengi, 0 = bloktan
     func setColor(_ ids: [Int], _ aci: Int) { locked { _ = withIds(ids) { mk_set_color($0, $1, $2, Int32(aci)) } } }
+    /// Katman çizgi kalınlığı (1/100 mm, -3 tanımsız); R2000+ dosyada DXF'e yazılır. Sonra rebuild.
+    func setLayerLweight(_ layer: Int, _ lw: Int) { locked { if let h { _ = mk_set_layer_lweight(h, Int32(layer), Int32(lw)) } } }
 
     func undo() -> Bool { locked { h.map { mk_undo($0) == 1 } ?? false } }
     func redo() -> Bool { locked { h.map { mk_redo($0) == 1 } ?? false } }
@@ -309,7 +330,7 @@ final class CadDocument {
         for i in 0..<nl {
             let n = mk_layer_name(h, Int32(i)).map { String(cString: $0) } ?? ""
             layers.append(CadLayer(name: n, rgb: mk_layer_rgb(h, Int32(i)), offInFile: (mk_layer_flags(h, Int32(i)) & 1) != 0,
-                                   count: Int(mk_layer_entity_count(h, Int32(i)))))
+                                   count: Int(mk_layer_entity_count(h, Int32(i))), lweight: Int(mk_layer_lweight(h, Int32(i)))))
         }
 
         let nv = Int(mk_vertex_float_count(h))
@@ -324,15 +345,20 @@ final class CadDocument {
         }
 
         var batches: [LineBatch] = []
+        var segs = 0
         let nb = Int(mk_batch_count(h))
         if nb > 0, let bp = mk_batches(h) {
             for i in 0..<nb {
                 let b = bp[i]
                 batches.append(LineBatch(layer: Int(b.layer), rgb: b.rgb, first: Int(b.offset / 2), count: Int(b.count / 2),
                                          minX: Float(Double(b.minx) - ox), minY: Float(Double(b.miny) - oy),
-                                         maxX: Float(Double(b.maxx) - ox), maxY: Float(Double(b.maxy) - oy)))
+                                         maxX: Float(Double(b.maxx) - ox), maxY: Float(Double(b.maxy) - oy), lweight: Int(b.lweight)))
+                segs += Int(b.count / 4)
             }
         }
+        var segOwners = [Int32](repeating: -1, count: segs)
+        if segs > 0, let so = mk_seg_owners(h) { for i in 0..<segs { segOwners[i] = so[i] } }
+        let po = mk_poly_owners(h), to = mk_text_owners(h)
 
         var fills: [FillGroup] = []
         let np = Int(mk_poly_count(h))
@@ -348,7 +374,7 @@ final class CadDocument {
                 let ks = groups[g]!
                 let p0 = pp[ks[0]]
                 fills.append(FillGroup(layer: Int(p0.layer), rgb: p0.rgb, alpha: p0.alpha,
-                                       loopFirst: ks.map { Int(pp[$0].offset / 2) }, loopCount: ks.map { Int(pp[$0].npoints) }))
+                                       loopFirst: ks.map { Int(pp[$0].offset / 2) }, loopCount: ks.map { Int(pp[$0].npoints) }, owner: po.map { Int($0[ks[0]]) } ?? -1))
             }
         }
 
@@ -363,16 +389,20 @@ final class CadDocument {
                     String(decoding: UnsafeRawBufferPointer(start: raw.advanced(by: Int(t.utf8_offset)), count: Int(t.utf8_len)), as: UTF8.self)
                 texts.append(CadText(x: Float(Double(t.x) - ox), y: Float(Double(t.y) - oy), height: t.height, rotation: t.rotation,
                                      widthFactor: t.width_factor, boxWidth: t.box_width, layer: Int(t.layer), rgb: t.rgb,
-                                     hAlign: Int(t.halign), vAlign: Int(t.valign), text: s))
+                                     hAlign: Int(t.halign), vAlign: Int(t.valign), text: s, owner: to.map { Int($0[i]) } ?? -1))
             }
         }
 
         var ext = [Float](repeating: 0, count: 4)
         mk_extents(h, &ext)
-        return CadScene(name: name, version: mk_dxf_version(h).map { String(cString: $0) } ?? "", entityCount: Int(mk_entity_count(h)),
+        let scene = CadScene(name: name, version: mk_dxf_version(h).map { String(cString: $0) } ?? "", entityCount: Int(mk_entity_count(h)),
                         layers: layers, vertices: v, batches: batches, fills: fills, texts: texts,
                         minX: Float(Double(ext[0]) - ox), minY: Float(Double(ext[1]) - oy),
                         maxX: Float(Double(ext[2]) - ox), maxY: Float(Double(ext[3]) - oy),
                         parseMs: Int(Date().timeIntervalSince(start) * 1000))
+        scene.segOwners = segOwners
+        scene.units = Int(mk_insunits(h))
+        scene.titleBlock = Int(mk_find_insert(h, "MK_TBL_ANTET_"))
+        return scene
     }
 }

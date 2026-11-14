@@ -18,54 +18,168 @@ public sealed record Paper(string Name, float W, float H)
     public static readonly Paper[] All = [new("A4", 595, 842), new("A3", 842, 1191), new("A2", 1191, 1684), new("A1", 1684, 2384), new("A0", 2384, 3370)];
 }
 
-public sealed record ExportOptions(ExportFormat Format, Paper Paper, PageOrientation Orientation, bool ViewOnly, bool Monochrome);
+/// <summary>
+/// Scale: ölçek paydası (50 → 1/50), 0 = kâğıda sığdır. UnitMm: bir çizim biriminin mm karşılığı (cm çizimde 10).
+/// DefaultLw: kalınlığı tanımsız çizgilerin kalınlığı (mm). TitleBlock: firma antetini sağ alt köşeye al. Footer: alt bilgi şeridi.
+/// </summary>
+public sealed record ExportOptions(ExportFormat Format, Paper Paper, PageOrientation Orientation, bool ViewOnly, bool Monochrome,
+    int Scale = 0, double UnitMm = 10, float DefaultLw = 0.18f, bool TitleBlock = true, bool Footer = false);
+
+/// <summary>Sayfa yerleşimi (punto, Y yukarı). K: punto / çizim birimi; Ka: antet için aynısı.</summary>
+public sealed record PageLayout(float W, float H, bool Landscape, double K, double Ox, double Oy, (float X0, float Y0, float X1, float Y1) Area,
+    bool HasTitle, double Ka, double Ax, double Ay, bool Fits, double EffScale, double NeedWmm, double NeedHmm);
 
 /// <summary>
 /// Çizimi beyaz kâğıda PDF (kendi vektör yazıcımız) ya da PNG (Win2D) olarak çıkarır (Android ui/Exporter.kt ile aynı sayfa düzeni).
+/// Pafta TS EN ISO 5457: solda 20 mm cilt payı, diğer kenarlar 10 mm, 0,7 mm çerçeve; antet sağ alt köşede en çok 180 mm (ISO 7200).
 /// Sayfa birimi punto, Y yukarı. Herhangi bir iş parçacığından çağrılabilir.
 /// </summary>
 public static class Exporter
 {
-    private const float Margin = 28; // ≈10 mm
-    private const float Footer = 14;
+    private const float Mm = 72f / 25.4f;
+    private const float FrameLeft = 20 * Mm, FrameSide = 10 * Mm, FrameLine = 0.7f * Mm, FooterH = 5 * Mm, TitleMaxW = 180 * Mm;
     private const float PngDpi = 150;
     /// <summary>Helvetica / Arial büyük harf yüksekliği / yazı boyutu</summary>
     private const float CapRatio = 0.716f;
+    /// <summary>Ölçek paydaları; 0 = kâğıda sığdır</summary>
+    public static readonly int[] Scales = [0, 1, 2, 5, 10, 20, 25, 50, 100, 200, 500, 1000];
+    private static readonly System.Text.RegularExpressions.Regex ScaleText = new(@"^\s*1\s*[/:]\s*\d+([.,]\d+)?\s*$");
 
-    /// <summary>Tüm çizimin dünya penceresi (%2 pay)</summary>
-    public static (double X0, double Y0, double X1, double Y1) Extents(CadScene s)
+    /// <summary>$INSUNITS → bir birimin mm karşılığı; belirtilmemişse cm (mimari altlıkların çoğu)</summary>
+    public static double UnitMm(int insunits) => insunits switch { 1 => 25.4, 2 => 304.8, 4 => 1, 5 => 10, 6 => 1000, _ => 10 };
+
+    /// <summary>Tüm çizimin dünya penceresi (%2 pay); exclude ≥ 0 ise o nesne (ör. sağ alta alınan antet) hariç</summary>
+    public static (double X0, double Y0, double X1, double Y1) Extents(CadScene s, int exclude = -1)
     {
-        double px = (s.MaxX - s.MinX) * 0.02, py = (s.MaxY - s.MinY) * 0.02;
-        return (s.MinX - px, s.MinY - py, s.MaxX + px, s.MaxY + py);
+        double x0 = s.MinX, y0 = s.MinY, x1 = s.MaxX, y1 = s.MaxY;
+        if (exclude >= 0 && Bounds(s, o => o != exclude) is { } b) (x0, y0, x1, y1) = b;
+        double px = (x1 - x0) * 0.02, py = (y1 - y0) * 0.02;
+        return (x0 - px, y0 - py, x1 + px, y1 + py);
+    }
+
+    /// <summary>Sahibi koşula uyan ilkellerin sınırları (yazılar dayanak noktasıyla)</summary>
+    public static (double X0, double Y0, double X1, double Y1)? Bounds(CadScene s, Func<int, bool> owner)
+    {
+        double x0 = double.MaxValue, y0 = double.MaxValue, x1 = double.MinValue, y1 = double.MinValue;
+        void G(float x, float y) { if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
+        var v = s.Vertices;
+        foreach (var b in s.Batches)
+            for (int i = b.First; i + 1 < b.First + b.Count; i += 2)
+                if (owner(Own(s, i))) { G(v[i * 2], v[i * 2 + 1]); G(v[i * 2 + 2], v[i * 2 + 3]); }
+        foreach (var f in s.Fills)
+            if (owner(f.Owner))
+                for (int q = 0; q < f.LoopFirst.Length; q++)
+                    for (int i = 0; i < f.LoopCount[q]; i++) G(v[(f.LoopFirst[q] + i) * 2], v[(f.LoopFirst[q] + i) * 2 + 1]);
+        foreach (var t in s.Texts)
+            if (owner(t.Owner)) { G(t.X, t.Y); G(t.X, t.Y + t.Height); }
+        return x0 <= x1 ? (x0, y0, x1, y1) : null;
+    }
+
+    /// <summary>Köşe indeksinin ait olduğu çizgi parçasının sahibi</summary>
+    private static int Own(CadScene s, int vertex) => vertex / 2 < s.SegOwners.Length ? s.SegOwners[vertex / 2] : -1;
+
+    /// <summary>Sağ alta alınacak antetin sınırları; seçenek kapalıysa ya da antet yoksa null</summary>
+    public static (double X0, double Y0, double X1, double Y1)? TitleBounds(CadScene s, ExportOptions o) =>
+        o.TitleBlock && s.TitleBlock >= 0 ? Bounds(s, w => w == s.TitleBlock) : null;
+
+    public static PageLayout Layout((double X0, double Y0, double X1, double Y1) win, (double X0, double Y0, double X1, double Y1)? title, ExportOptions o) =>
+        Layout(win, title, o, o.Paper, o.Orientation);
+
+    private static PageLayout Layout((double X0, double Y0, double X1, double Y1) win, (double X0, double Y0, double X1, double Y1)? title,
+        ExportOptions o, Paper paper, PageOrientation orientation)
+    {
+        double ww = Math.Max(win.X1 - win.X0, 1e-6), wh = Math.Max(win.Y1 - win.Y0, 1e-6);
+        bool landscape = orientation switch { PageOrientation.Landscape => true, PageOrientation.Portrait => false, _ => ww >= wh };
+        float w = landscape ? paper.H : paper.W, h = landscape ? paper.W : paper.H;
+        float fx0 = FrameLeft, fx1 = w - FrameSide, fy1 = h - FrameSide, iy0 = FrameSide + (o.Footer ? FooterH : 0);
+        var cands = new List<(float X0, float Y0, float X1, float Y1)>();
+        double ka = 0, ax = 0, ay = 0;
+        if (title is { } t && t.X1 > t.X0 && t.Y1 > t.Y0)
+        {
+            double tw = t.X1 - t.X0, th = t.Y1 - t.Y0;
+            ka = Math.Min(Math.Min(TitleMaxW, fx1 - fx0) / tw, (fy1 - iy0) * 0.6 / th);
+            float pw = (float)(tw * ka), ph = (float)(th * ka);
+            ax = fx1 - pw - t.X0 * ka;
+            ay = iy0 - t.Y0 * ka;
+            cands.Add((fx0, iy0, fx1 - pw, fy1)); // antetin solu (tam yükseklik)
+            cands.Add((fx0, iy0 + ph, fx1, fy1)); // antetin üstü (tam genişlik)
+        }
+        else cands.Add((fx0, iy0, fx1, fy1));
+
+        double Fit((float X0, float Y0, float X1, float Y1) c) => Math.Max(0, Math.Min((c.X1 - c.X0) / ww, (c.Y1 - c.Y0) / wh));
+        var best = cands.OrderByDescending(Fit).First();
+        double k = Fit(best);
+        bool fits = true;
+        if (o.Scale > 0)
+        {
+            k = o.UnitMm / o.Scale * Mm;
+            var fitting = cands.Where(c => Fit(c) >= k * 0.999).ToList();
+            fits = fitting.Count > 0;
+            if (fits) best = fitting.OrderByDescending(Fit).First();
+        }
+        double ox = (best.X0 + best.X1) / 2 - (win.X0 + ww / 2) * k, oy = (best.Y0 + best.Y1) / 2 - (win.Y0 + wh / 2) * k;
+        return new PageLayout(w, h, landscape, k, ox, oy, best, ka > 0, ka, ax, ay, fits, o.UnitMm * Mm / k, ww * k / Mm, wh * k / Mm);
+    }
+
+    /// <summary>Seçilen ölçekte çizimin sığdığı en küçük kâğıt (yön sabitse yalnız o yön)</summary>
+    public static (Paper Paper, PageOrientation Orientation)? SuggestPaper((double X0, double Y0, double X1, double Y1) win,
+        (double X0, double Y0, double X1, double Y1)? title, ExportOptions o)
+    {
+        PageOrientation[] dirs = o.Orientation == PageOrientation.Auto ? [PageOrientation.Landscape, PageOrientation.Portrait] : [o.Orientation];
+        foreach (var p in Paper.All)
+            foreach (var d in dirs)
+                if (Layout(win, title, o, p, d).Fits) return (p, d);
+        return null;
     }
 
     public static byte[] Render(CadScene s, ICollection<int> hidden, (double X0, double Y0, double X1, double Y1) win, ExportOptions o, string title)
     {
-        bool landscape = o.Orientation switch
-        {
-            PageOrientation.Landscape => true,
-            PageOrientation.Portrait => false,
-            _ => win.X1 - win.X0 >= win.Y1 - win.Y0,
-        };
-        float w = landscape ? o.Paper.H : o.Paper.W, h = landscape ? o.Paper.W : o.Paper.H;
+        var L = Layout(win, TitleBounds(s, o), o);
         if (o.Format == ExportFormat.Pdf)
         {
-            var pdf = new PdfSink(w, h);
-            DrawPage(pdf, w, h, s, hidden, win, o, title, 0.4f);
+            var pdf = new PdfSink(L.W, L.H);
+            DrawPage(pdf, L, s, hidden, win, o, title);
             return pdf.Finish();
         }
         float k = PngDpi / 72f;
         // çok büyük kâğıtta bellek sınırı: uzun kenar en çok 9000 piksel
-        k = Math.Min(k, 9000 / Math.Max(w, h));
-        using var png = new PngSink(w, h, k);
-        DrawPage(png, w, h, s, hidden, win, o, title, 0.5f);
+        k = Math.Min(k, 9000 / Math.Max(L.W, L.H));
+        using var png = new PngSink(L.W, L.H, k);
+        DrawPage(png, L, s, hidden, win, o, title);
         return png.Finish();
     }
 
     // ───────────────────────── sayfa ─────────────────────────
 
-    private static void DrawPage(ISink c, float w, float h, CadScene s, ICollection<int> hidden, (double X0, double Y0, double X1, double Y1) win,
-        ExportOptions o, string title, float lineWidth)
+    private static void DrawPage(ISink c, PageLayout L, CadScene s, ICollection<int> hidden, (double X0, double Y0, double X1, double Y1) win,
+        ExportOptions o, string title)
+    {
+        int tb = L.HasTitle ? s.TitleBlock : -1;
+        var a = L.Area;
+        c.PushClip(a.X0, a.Y0, a.X1, a.Y1);
+        DrawScene(c, s, hidden, o, L.K, L.Ox, L.Oy, win, tb < 0 ? null : w => w != tb, null);
+        c.PopClip();
+        if (tb >= 0)
+            DrawScene(c, s, hidden, o, L.Ka, L.Ax, L.Ay, null, w => w == tb, o.Scale > 0 ? $"1/{o.Scale}" : null);
+
+        // çerçeve (ISO 5457) ve alt bilgi
+        float fx0 = FrameLeft, fy0 = FrameSide, fx1 = L.W - FrameSide, fy1 = L.H - FrameSide;
+        c.Lines([fx0, fy0, fx1, fy0, fx1, fy0, fx1, fy1, fx1, fy1, fx0, fy1, fx0, fy1, fx0, fy0], 0, FrameLine);
+        if (o.Footer)
+        {
+            c.Lines([fx0, fy0 + FooterH, fx1, fy0 + FooterH], 0, 0.25f * Mm);
+            float fs = 7;
+            c.Text(title, fx0 + 4, fy0 + 4, 0, 0, fs, 1, 0, 0);
+            var right = (o.Scale > 0 ? $"Ölçek 1/{o.Scale}" : $"Ölçeksiz (yaklaşık 1/{Math.Round(L.EffScale)})") + " · " +
+                        DateTime.Now.ToString("dd.MM.yyyy", new CultureInfo("tr-TR"));
+            c.Text(right, fx1 - 4, fy0 + 4, -TextMetrics.Width(right, fs), 0, fs, 1, 0, 0);
+        }
+    }
+
+    /// <summary>Sahneyi (x·k + ox, y·k + oy) dönüşümüyle çizer. cull: görünmeyen partileri atlamak için dünya penceresi;
+    /// owner: ilkelin sahip nesnesine göre süzgeç; scale: antetteki "1/50" gibi ölçek yazılarının yerine yazılacak değer.</summary>
+    private static void DrawScene(ISink c, CadScene s, ICollection<int> hidden, ExportOptions o, double k, double ox, double oy,
+        (double X0, double Y0, double X1, double Y1)? cull, Func<int, bool>? owner, string? scale)
     {
         uint Col(uint rgb)
         {
@@ -75,19 +189,13 @@ public static class Exporter
             // beyaz kâğıtta beyaz/çok açık renkler görünmez: siyah (AutoCAD çizim davranışı)
             return r * 299 + g * 587 + b * 114 > 200_000 ? 0 : rgb;
         }
-        // hedef: kenar payı içinde, alt bilgi şeridinin üstü (Y yukarı)
-        float tx0 = Margin, ty0 = Margin + Footer, tx1 = w - Margin, ty1 = h - Margin;
-        double ww = Math.Max(win.X1 - win.X0, 1e-6), wh = Math.Max(win.Y1 - win.Y0, 1e-6);
-        double k = Math.Min((tx1 - tx0) / ww, (ty1 - ty0) / wh);
-        double ox = (tx0 + tx1) / 2 - (win.X0 + ww / 2) * k, oy = (ty0 + ty1) / 2 - (win.Y0 + wh / 2) * k;
         float X(float x) => (float)(ox + x * k);
         float Y(float y) => (float)(oy + y * k);
         var v = s.Vertices;
 
-        c.PushClip(tx0, ty0, tx1, ty1);
         foreach (var f in s.Fills)
         {
-            if (hidden.Contains(f.Layer)) continue;
+            if (hidden.Contains(f.Layer) || (owner != null && !owner(f.Owner))) continue;
             var loops = new List<float[]>();
             for (int q = 0; q < f.LoopFirst.Length; q++)
             {
@@ -98,27 +206,28 @@ public static class Exporter
             }
             c.Fill(loops, Col(f.Rgb), Math.Clamp(f.Alpha, 0, 1));
         }
-        // görünmeyen partileri atla
+        // görünmeyen partileri atla; kalınlık: DXF'teki (1/100 mm) ya da tanımsızsa varsayılan
         foreach (var b in s.Batches)
         {
             if (hidden.Contains(b.Layer) || b.Count < 2) continue;
-            if (b.MaxX < win.X0 || b.MinX > win.X1 || b.MaxY < win.Y0 || b.MinY > win.Y1) continue;
-            var seg = new float[b.Count / 2 * 4];
-            int j = 0;
+            if (cull is { } w && (b.MaxX < w.X0 || b.MinX > w.X1 || b.MaxY < w.Y0 || b.MinY > w.Y1)) continue;
+            var seg = new List<float>(b.Count * 2);
             for (int i = b.First; i + 1 < b.First + b.Count; i += 2)
             {
-                seg[j++] = X(v[i * 2]); seg[j++] = Y(v[i * 2 + 1]); seg[j++] = X(v[i * 2 + 2]); seg[j++] = Y(v[i * 2 + 3]);
+                if (owner != null && !owner(Own(s, i))) continue;
+                seg.Add(X(v[i * 2])); seg.Add(Y(v[i * 2 + 1])); seg.Add(X(v[i * 2 + 2])); seg.Add(Y(v[i * 2 + 3]));
             }
-            c.Lines(seg, Col(b.Rgb), lineWidth);
+            if (seg.Count > 0) c.Lines([.. seg], Col(b.Rgb), (b.LWeight >= 0 ? b.LWeight / 100f : o.DefaultLw) * Mm);
         }
         foreach (var t in s.Texts)
         {
-            if (hidden.Contains(t.Layer)) continue;
+            if (hidden.Contains(t.Layer) || (owner != null && !owner(t.Owner))) continue;
             float cap = (float)(t.Height * k);
             if (cap < 0.3f) continue;
-            if (t.X < win.X0 - t.Height * 60 || t.X > win.X1 + t.Height * 60 || t.Y < win.Y0 - t.Height * 60 || t.Y > win.Y1 + t.Height * 60) continue;
+            if (cull is { } w && (t.X < w.X0 - t.Height * 60 || t.X > w.X1 + t.Height * 60 || t.Y < w.Y0 - t.Height * 60 || t.Y > w.Y1 + t.Height * 60)) continue;
+            var tt = scale != null && ScaleText.IsMatch(t.Text) ? t with { Text = scale } : t;
             float size = cap / CapRatio, wf = t.WidthFactor > 0 ? t.WidthFactor : 1;
-            var lines = Wrap(t, size, wf, k);
+            var lines = Wrap(tt, size, wf, k);
             int n = lines.Count;
             float step = cap * 1.667f;
             for (int i = 0; i < n; i++)
@@ -136,15 +245,6 @@ public static class Exporter
                 c.Text(lines[i], X(t.X), Y(t.Y), ax, -by, size, wf, t.Rotation, Col(t.Rgb));
             }
         }
-        c.PopClip();
-
-        // çerçeve ve alt bilgi
-        c.Lines([Margin, Margin, w - Margin, Margin, w - Margin, Margin, w - Margin, h - Margin, w - Margin, h - Margin, Margin, h - Margin,
-                 Margin, h - Margin, Margin, Margin, Margin, Margin + Footer, w - Margin, Margin + Footer], 0, 0.6f);
-        float fs = 7;
-        c.Text(title, Margin + 4, Margin + 4, 0, 0, fs, 1, 0, 0);
-        var right = DateTime.Now.ToString("dd.MM.yyyy", new CultureInfo("tr-TR")) + " · MühenKit";
-        c.Text(right, w - Margin - 4, Margin + 4, -TextMetrics.Width(right, fs), 0, fs, 1, 0, 0);
     }
 
     /// <summary>MTEXT kutu genişliğine göre kelime kaydırma</summary>
@@ -234,8 +334,9 @@ public static class Exporter
             int n = 0;
             for (int i = 0; i + 3 < seg.Length; i += 4)
             {
-                // birbirine bağlı parçaları tek yol olarak sürdür (dosya küçülür)
-                if (Math.Abs(seg[i] - lx) > 0.005f || Math.Abs(seg[i + 1] - ly) > 0.005f)
+                // birbirine bağlı parçaları tek yol olarak sürdür (dosya küçülür). NaN karşılaştırması false döner:
+                // ilk parçada da "m" yazılsın diye koşul tersten kurulu (yoksa her grubun ilk çizgisi kayboluyordu)
+                if (!(Math.Abs(seg[i] - lx) <= 0.005f && Math.Abs(seg[i + 1] - ly) <= 0.005f))
                     _c.Append(N(seg[i])).Append(' ').Append(N(seg[i + 1])).Append(" m ");
                 _c.Append(N(seg[i + 2])).Append(' ').Append(N(seg[i + 3])).Append(" l\n");
                 lx = seg[i + 2]; ly = seg[i + 3];

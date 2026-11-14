@@ -256,16 +256,52 @@ struct TitleBlockForm: View {
 // ───────────────────────── dışa aktarma seçenekleri ─────────────────────────
 
 struct ExportSheet: View {
+    let scene: CadScene
     @Binding var options: ExportOptions
+    let windowOf: (ExportOptions) -> CGRect
     let onGo: () -> Void
     @Environment(\.dismiss) private var dismiss
+    @State private var unitApplied = false
+
+    private var fileUnit: String {
+        switch scene.units {
+        case 4: return "mm"
+        case 5: return "cm"
+        case 6: return "m"
+        case 1: return "inç"
+        case 2: return "ayak"
+        default: return "belirtilmemiş"
+        }
+    }
+
+    /// Ölçek bilgisi ve uygun kâğıt önerisi
+    private var info: (text: String, suggestion: (Paper, PageOrientation)?) {
+        let o = options
+        let win = windowOf(o)
+        let title = Exporter.titleBounds(scene, o)
+        let L = Exporter.layout(win, title, o)
+        let dir = L.landscape ? "yatay" : "dikey"
+        if o.scale == 0 {
+            return ("Çizim kâğıda sığdırılır: yaklaşık 1/\(Int(L.effScale.rounded())) (ölçü alınamaz). Ölçekli çıktı için ölçek seçin.", nil)
+        }
+        let need = "\(Int(L.needWmm.rounded())) × \(Int(L.needHmm.rounded())) mm"
+        if L.fits { return ("1/\(o.scale): çizim \(need) — \(o.paper.name) \(dir) kâğıda sığıyor.", nil) }
+        let sg = Exporter.suggestPaper(win, title, o)
+        return ("1/\(o.scale): çizim \(need) — \(o.paper.name) \(dir) kâğıda SIĞMIYOR, taşan kısım kesilir." +
+                (sg == nil ? " A0'a da sığmıyor: daha küçük ölçek seçin." : ""), sg)
+    }
 
     var body: some View {
+        let hasTitle = scene.titleBlock >= 0
+        let inf = info
         NavigationStack {
             Form {
                 Picker("Biçim", selection: $options.format) {
                     Text("PDF (vektör)").tag(ExportFormat.pdf)
                     Text("Resim (PNG)").tag(ExportFormat.png)
+                }
+                Picker("Ölçek", selection: $options.scale) {
+                    ForEach(Exporter.scales, id: \.self) { k in Text(k == 0 ? "Kâğıda sığdır" : "1/\(k)").tag(k) }
                 }
                 Picker("Kâğıt", selection: $options.paper) { ForEach(Paper.all, id: \.self) { Text($0.name).tag($0) } }
                 Picker("Yön", selection: $options.orientation) {
@@ -273,20 +309,48 @@ struct ExportSheet: View {
                     Text("Yatay").tag(PageOrientation.landscape)
                     Text("Dikey").tag(PageOrientation.portrait)
                 }
+                Section {
+                    Text(inf.text).font(.footnote)
+                    if let sg = inf.suggestion {
+                        Button("\(sg.0.name) \(sg.1 == .portrait ? "dikey" : "yatay") kâğıda geç") {
+                            options.paper = sg.0
+                            options.orientation = sg.1
+                        }
+                    }
+                }
+                Picker("Çizim birimi (dosyada: \(fileUnit))", selection: $options.unitMm) {
+                    Text("mm").tag(1.0)
+                    Text("cm").tag(10.0)
+                    Text("m").tag(1000.0)
+                }
+                Picker("Kalınlığı tanımsız çizgiler", selection: $options.defaultLw) {
+                    ForEach([CGFloat(0.13), 0.18, 0.25, 0.35], id: \.self) { v in Text(String(format: "%.2f mm", Double(v))).tag(v) }
+                }
                 Picker("Alan", selection: $options.viewOnly) {
                     Text("Tüm çizim").tag(false)
                     Text("Ekranda görünen").tag(true)
                 }
                 Toggle("Siyah-beyaz", isOn: $options.monochrome)
+                Toggle(hasTitle ? "Firma antetini sağ alt köşeye yerleştir" : "Firma anteti yok (Ekle › Tablo › Antet)",
+                       isOn: Binding(get: { hasTitle && options.titleBlock }, set: { options.titleBlock = $0 }))
+                    .disabled(!hasTitle)
+                Toggle("Alt bilgi şeridi (dosya adı, ölçek, tarih)", isOn: $options.footer)
+                Text("Gizlediğin katmanlar çıktıya girmez. Pafta: solda 20 mm cilt payı, diğer kenarlar 10 mm (TS EN ISO 5457).")
+                    .font(.caption).foregroundStyle(.secondary)
             }
             .navigationTitle("Dışa aktar")
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("Vazgeç") { dismiss() } }
                 ToolbarItem(placement: .confirmationAction) { Button("Kaydet…") { dismiss(); onGo() } }
             }
+            .onAppear {
+                // dosyada birim yazıyorsa onu kullan
+                if !unitApplied, [1, 2, 4, 5, 6].contains(scene.units) { options.unitMm = Exporter.unitMm(scene.units) }
+                unitApplied = true
+            }
         }
         #if os(macOS)
-        .frame(minWidth: 420, minHeight: 360)
+        .frame(minWidth: 460, minHeight: 560)
         #endif
     }
 }

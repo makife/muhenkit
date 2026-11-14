@@ -2,11 +2,13 @@ using System.Runtime.InteropServices;
 
 namespace MuhenKit.Core;
 
-public sealed record CadLayer(string Name, uint Rgb, bool OffInFile, int Count);
-public sealed record LineBatch(int Layer, uint Rgb, int First, int Count, float MinX, float MinY, float MaxX, float MaxY);
-public sealed record FillGroup(int Layer, uint Rgb, float Alpha, int[] LoopFirst, int[] LoopCount);
+/// <summary>LWeight: çizgi kalınlığı 1/100 mm, -3 tanımsız (çıktıda varsayılan kalınlık)</summary>
+public sealed record CadLayer(string Name, uint Rgb, bool OffInFile, int Count, int LWeight = -3);
+public sealed record LineBatch(int Layer, uint Rgb, int First, int Count, float MinX, float MinY, float MaxX, float MaxY, int LWeight = -3);
+/// <summary>Owner: üst düzey nesne kimliği (mk_pick ile aynı)</summary>
+public sealed record FillGroup(int Layer, uint Rgb, float Alpha, int[] LoopFirst, int[] LoopCount, int Owner = -1);
 public sealed record CadText(float X, float Y, float Height, float Rotation, float WidthFactor, float BoxWidth,
-    int Layer, uint Rgb, int HAlign, int VAlign, string Text);
+    int Layer, uint Rgb, int HAlign, int VAlign, string Text, int Owner = -1);
 
 /// <summary>
 /// Çizilmeye hazır sahne. Koordinatlardan köken (OriginX/Y) çıkarılmıştır: büyük (UTM) koordinatlarda
@@ -22,6 +24,12 @@ public sealed class CadScene
     public required List<LineBatch> Batches;
     public required List<FillGroup> Fills;
     public required List<CadText> Texts;
+    /// <summary>Çizgi parçası başına sahip nesne: köşe i'nin parçası SegOwners[i / 2]</summary>
+    public int[] SegOwners = [];
+    /// <summary>Çizim birimi ($INSUNITS): 4 mm, 5 cm, 6 m, 1 inç, 2 ayak; 0/-1 belirtilmemiş</summary>
+    public int Units = -1;
+    /// <summary>Son eklenen firma anteti (MK_TBL_ANTET_ bloğu) nesne kimliği; yoksa -1</summary>
+    public int TitleBlock = -1;
     public float MinX, MinY, MaxX, MaxY;
     public long ParseMs;
 }
@@ -234,6 +242,8 @@ public sealed class CadDocument : IDisposable
     public void SetLayer(IReadOnlyCollection<int> ids, string layer) { lock (_lock) Native.mk_set_layer(H, A(ids), ids.Count, Z(layer)); }
     /// <summary>aci: 1–255, 256 = katman rengi, 0 = bloktan</summary>
     public void SetColor(IReadOnlyCollection<int> ids, int aci) { lock (_lock) Native.mk_set_color(H, A(ids), ids.Count, aci); }
+    /// <summary>Katman çizgi kalınlığı (1/100 mm, -3 tanımsız); R2000+ dosyada DXF'e yazılır. Sonra Rebuild.</summary>
+    public void SetLayerLWeight(int layer, int lw) { lock (_lock) Native.mk_set_layer_lweight(H, layer, lw); }
 
     public bool Undo() { lock (_lock) return Native.mk_undo(H) == 1; }
     public bool Redo() { lock (_lock) return Native.mk_redo(H) == 1; }
@@ -247,7 +257,7 @@ public sealed class CadDocument : IDisposable
         var layers = new List<CadLayer>(nl);
         for (int i = 0; i < nl; i++)
             layers.Add(new CadLayer(Native.Str(Native.mk_layer_name(h, i)), Native.mk_layer_rgb(h, i),
-                (Native.mk_layer_flags(h, i) & 1) != 0, Native.mk_layer_entity_count(h, i)));
+                (Native.mk_layer_flags(h, i) & 1) != 0, Native.mk_layer_entity_count(h, i), Native.mk_layer_lweight(h, i)));
 
         long nv = Native.mk_vertex_float_count(h);
         var v = new float[nv];
@@ -261,12 +271,18 @@ public sealed class CadDocument : IDisposable
         int nb = Native.mk_batch_count(h);
         var bp = (Native.MkBatch*)Native.mk_batches(h);
         var batches = new List<LineBatch>(nb);
+        long segs = 0;
         for (int i = 0; i < nb; i++)
         {
             var b = bp[i];
             batches.Add(new LineBatch(b.Layer, b.Rgb, (int)(b.Offset / 2), (int)(b.Count / 2),
-                (float)(b.MinX - OriginX), (float)(b.MinY - OriginY), (float)(b.MaxX - OriginX), (float)(b.MaxY - OriginY)));
+                (float)(b.MinX - OriginX), (float)(b.MinY - OriginY), (float)(b.MaxX - OriginX), (float)(b.MaxY - OriginY), b.LWeight));
+            segs += b.Count / 4;
         }
+        var segOwners = new int[segs];
+        if (segs > 0) Marshal.Copy(Native.mk_seg_owners(h), segOwners, 0, (int)segs);
+        var po = (int*)Native.mk_poly_owners(h);
+        var to = (int*)Native.mk_text_owners(h);
 
         int np = Native.mk_poly_count(h);
         var pp = (Native.MkPoly*)Native.mk_polys(h);
@@ -281,7 +297,7 @@ public sealed class CadDocument : IDisposable
         {
             var ks = groups[g];
             var p0 = pp[ks[0]];
-            return new FillGroup(p0.Layer, p0.Rgb, p0.Alpha, ks.Select(k => (int)(pp[k].Offset / 2)).ToArray(), ks.Select(k => pp[k].NPoints).ToArray());
+            return new FillGroup(p0.Layer, p0.Rgb, p0.Alpha, ks.Select(k => (int)(pp[k].Offset / 2)).ToArray(), ks.Select(k => pp[k].NPoints).ToArray(), po[ks[0]]);
         }).ToList();
 
         int nt = Native.mk_text_count(h);
@@ -293,7 +309,7 @@ public sealed class CadDocument : IDisposable
             var t = tp[i];
             var s = t.Utf8Len == 0 ? "" : System.Text.Encoding.UTF8.GetString(pool + t.Utf8Offset, t.Utf8Len);
             texts.Add(new CadText((float)(t.X - OriginX), (float)(t.Y - OriginY), t.Height, t.Rotation, t.WidthFactor, t.BoxWidth,
-                t.Layer, t.Rgb, t.HAlign, t.VAlign, s));
+                t.Layer, t.Rgb, t.HAlign, t.VAlign, s, to[i]));
         }
 
         var ext = new float[4];
@@ -308,6 +324,9 @@ public sealed class CadDocument : IDisposable
             Batches = batches,
             Fills = fills,
             Texts = texts,
+            SegOwners = segOwners,
+            Units = Native.mk_insunits(h),
+            TitleBlock = Native.mk_find_insert(h, Native.Z("MK_TBL_ANTET_")),
             MinX = (float)(ext[0] - OriginX), MinY = (float)(ext[1] - OriginY),
             MaxX = (float)(ext[2] - OriginX), MaxY = (float)(ext[3] - OriginY),
             ParseMs = sw.ElapsedMilliseconds,

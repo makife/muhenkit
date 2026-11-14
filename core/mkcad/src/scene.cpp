@@ -4,6 +4,7 @@
 #include <cmath>
 #include <limits>
 #include <map>
+#include <tuple>
 #include <utility>
 
 #include "document.h"
@@ -53,6 +54,7 @@ struct Ctx {
   M m;
   int parentLayer = -1;      // blok içinde "0" katmanının devralacağı katman
   uint32_t parentRgb = 0xFFFFFF;
+  int parentLw = -3;
   int depth = 0;
   int owner = -1;  // üst düzey nesne indeksi
 };
@@ -104,13 +106,14 @@ class Builder {
       entity(doc_.entities[i], root);
     }
 
-    // çizgi tamponlarını (katman, renk) gruplarına göre birleştir
+    // çizgi tamponlarını (katman, renk, kalınlık) gruplarına göre birleştir
     for (auto& kv : segs_) {
       auto& v = kv.second;
       if (v.empty()) continue;
       MkBatch b{};
-      b.layer = kv.first.first;
-      b.rgb = kv.first.second;
+      b.layer = std::get<0>(kv.first);
+      b.rgb = std::get<1>(kv.first);
+      b.lweight = std::get<2>(kv.first);
       b.kind = 0;
       b.offset = static_cast<int64_t>(doc_.vertices.size());
       b.count = static_cast<int64_t>(v.size());
@@ -141,8 +144,10 @@ class Builder {
 
  private:
   Document& doc_;
-  std::map<std::pair<int, uint32_t>, std::vector<float>> segs_;
-  std::map<std::pair<int, uint32_t>, std::vector<int32_t>> owners_;
+  using Key = std::tuple<int, uint32_t, int>;  // katman, renk, kalınlık
+  std::map<Key, std::vector<float>> segs_;
+  std::map<Key, std::vector<int32_t>> owners_;
+  int curLw_ = -3;  // entity() içinde çözülen kalınlık; seg() bunu kullanır
   std::vector<int32_t> pendingPolyOwner_;
   std::vector<std::vector<float>> singleTexts_;
   bool single_ = false;
@@ -174,6 +179,12 @@ class Builder {
     c = std::abs(c);
     return kAciRgb[std::clamp(c, 1, 255)];
   }
+  int resolveLw(const Entity& e, int layer, const Ctx& ctx) {
+    int w = e.lweight();
+    if (w == -1) return doc_.layers[layer].lw;
+    if (w == -2) return ctx.parentLw;
+    return w >= 0 ? w : -3;
+  }
 
   // ── çıktı ilkelleri
   void seg(int layer, uint32_t rgb, const M& m, double x1, double y1, double x2, double y2) {
@@ -182,10 +193,11 @@ class Builder {
     m.apply(x1, y1, ax, ay);
     m.apply(x2, y2, bx, by);
     if (!std::isfinite(ax) || !std::isfinite(bx) || !std::isfinite(ay) || !std::isfinite(by)) return;
-    auto& v = segs_[{layer, rgb}];
+    Key key{layer, rgb, curLw_};
+    auto& v = segs_[key];
     v.push_back(static_cast<float>(ax)); v.push_back(static_cast<float>(ay));
     v.push_back(static_cast<float>(bx)); v.push_back(static_cast<float>(by));
-    owners_[{layer, rgb}].push_back(curOwner_);
+    owners_[key].push_back(curOwner_);
     grow(ax, ay);
     grow(bx, by);
   }
@@ -450,6 +462,8 @@ class Builder {
     const std::string& t = e.type;
     int layer = resolveLayer(e, ctx);
     uint32_t rgb = resolveRgb(e, layer, ctx);
+    int lw = resolveLw(e, layer, ctx);
+    curLw_ = lw;
     const M& m = ctx.m;
     M mo = e.flipped() ? m * kFlip : m;  // OCS nesneleri için
     if (!single_) doc_.layers[layer].count++;
@@ -515,6 +529,8 @@ class Builder {
            e.f(41));
     } else if (t == "INSERT") {
       for (const auto& a : e.children) entity(a, ctx);  // öznitelikler dünya koordinatında
+      curOwner_ = ctx.owner;
+      curLw_ = lw;
       auto it = doc_.blocks.find(e.s(2));
       if (it == doc_.blocks.end() || ctx.depth > 12 || segTotal_ > kMaxSegs) return;
       const Block& blk = it->second;
@@ -529,6 +545,7 @@ class Builder {
           child.m = mo * local;
           child.parentLayer = layer;
           child.parentRgb = rgb;
+          child.parentLw = lw;
           child.depth = ctx.depth + 1;
           child.owner = ctx.owner;
           for (const auto& be : blk.entities) entity(be, child);
@@ -540,6 +557,7 @@ class Builder {
       Ctx child = ctx;
       child.parentLayer = layer;
       child.parentRgb = rgb;
+      child.parentLw = lw;
       child.depth = ctx.depth + 1;
       for (const auto& be : it->second.entities) entity(be, child);
     } else if (t == "SOLID" || t == "TRACE" || t == "3DFACE") {

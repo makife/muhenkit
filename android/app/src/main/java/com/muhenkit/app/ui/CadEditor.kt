@@ -1,5 +1,6 @@
 package com.muhenkit.app.ui
 
+import android.graphics.RectF
 import android.content.Context
 import android.net.Uri
 import android.provider.OpenableColumns
@@ -415,6 +416,9 @@ class CadEditor(private val context: Context, private val scope: CoroutineScope)
         if (ids.isNotEmpty()) edit { it.setColor(ids, aci) }
     }
 
+    /** Katman çizgi kalınlığı (1/100 mm, -3 varsayılan); geri alınamaz */
+    fun setLayerLweight(layer: Int, lw: Int) = edit { it.setLayerLweight(layer, lw) }
+
     fun startSymbol(s: CadSymbol) {
         selectTool(CadTool.SYMBOL)
         symbol = s
@@ -438,10 +442,17 @@ class CadEditor(private val context: Context, private val scope: CoroutineScope)
         }.sortedWith(compareBy({ !it.third }, { it.first }))
     }
 
+    /** Çıktıya girecek dünya penceresi: ekranda görünen ya da tüm çizim (sağ alta alınan antet hariç) */
+    fun exportWindow(o: ExportOptions): RectF? {
+        val s = scene ?: return null
+        val all = Exporter.extentsWindow(s, if (o.titleBlock) s.titleBlock else -1)
+        return if (o.viewOnly) glView?.viewWindow() ?: all else all
+    }
+
     /** Dışa aktarım baytları (arka planda çağırın). */
     fun exportBytes(o: ExportOptions): ByteArray? {
         val s = scene ?: return null
-        val window = if (o.viewOnly) glView?.viewWindow() ?: Exporter.extentsWindow(s) else Exporter.extentsWindow(s)
+        val window = exportWindow(o) ?: return null
         return Exporter.render(s, hidden, window, o, s.name)
     }
 

@@ -13,7 +13,7 @@ internal static partial class Native
         public int Layer;
         public uint Rgb;
         public int Kind;
-        public int Pad;
+        public int LWeight;
         public long Offset;
         public long Count;
         public float MinX, MinY, MaxX, MaxY;
@@ -53,6 +53,13 @@ internal static partial class Native
     [LibraryImport(Dll)] public static partial uint mk_layer_rgb(nint doc, int i);
     [LibraryImport(Dll)] public static partial int mk_layer_flags(nint doc, int i);
     [LibraryImport(Dll)] public static partial int mk_layer_entity_count(nint doc, int i);
+    [LibraryImport(Dll)] public static partial int mk_layer_lweight(nint doc, int i);
+    [LibraryImport(Dll)] public static partial int mk_set_layer_lweight(nint doc, int i, int lweight);
+    [LibraryImport(Dll)] public static partial int mk_insunits(nint doc);
+    [LibraryImport(Dll)] public static partial nint mk_seg_owners(nint doc);
+    [LibraryImport(Dll)] public static partial nint mk_poly_owners(nint doc);
+    [LibraryImport(Dll)] public static partial nint mk_text_owners(nint doc);
+    [LibraryImport(Dll)] public static partial int mk_find_insert(nint doc, byte[] prefix);
     [LibraryImport(Dll)] public static partial void mk_extents(nint doc, [Out] float[] out4);
     [LibraryImport(Dll)] public static partial nint mk_vertices(nint doc);
     [LibraryImport(Dll)] public static partial long mk_vertex_float_count(nint doc);

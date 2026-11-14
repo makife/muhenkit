@@ -128,6 +128,10 @@ class CadDocument private constructor(
     @Synchronized
     fun setColor(ids: Collection<Int>, aci: Int) = MkNative.setColor(h(), ids.toIntArray(), aci)
 
+    /** Katman çizgi kalınlığı (1/100 mm, -3 tanımsız); R2000+ dosyada DXF'e yazılır, geri alınamaz */
+    @Synchronized
+    fun setLayerLweight(layer: Int, lw: Int) = MkNative.setLayerLweight(h(), layer, lw)
+
     @Synchronized
     fun addCircle(layer: String, cx: Double, cy: Double, r: Double) =
         MkNative.addCircle(h(), layer.toByteArray(), cx + originX, cy + originY, r)

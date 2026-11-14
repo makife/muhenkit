@@ -387,6 +387,9 @@ final class CadEditor: ObservableObject {
         }.sorted { a, b in a.library != b.library ? a.library : a.name < b.name }
     }
 
+    /// Katman çizgi kalınlığı (1/100 mm, -3 varsayılan); geri alınamaz
+    func setLayerLweight(_ layer: Int, _ lw: Int) { edit { $0.setLayerLweight(layer, lw) } }
+
     // ───────────────────────── çekirdekte düzenle ─────────────────────────
 
     /// Çekirdekte düzenle → sahneyi yeniden kur (arka planda) → tuvale yükle

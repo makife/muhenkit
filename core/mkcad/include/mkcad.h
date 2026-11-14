@@ -30,7 +30,7 @@ typedef struct MkBatch {
   int32_t layer;   /* mk_layer_* indeksi */
   uint32_t rgb;    /* 0xRRGGBB */
   int32_t kind;    /* 0: çizgi parçaları */
-  int32_t _pad;
+  int32_t lweight; /* çizgi kalınlığı, 1/100 mm (25 = 0,25 mm); -3: tanımsız (çıktıda varsayılan kalınlık) */
   int64_t offset;  /* float indeksi */
   int64_t count;   /* float sayısı (4'ün katı) */
   float minx, miny, maxx, maxy;
@@ -82,6 +82,12 @@ MK_API const char* mk_layer_name(MkDoc* doc, int32_t i);
 MK_API uint32_t mk_layer_rgb(MkDoc* doc, int32_t i);
 MK_API int32_t mk_layer_flags(MkDoc* doc, int32_t i);        /* bit0 kapalı, bit1 dondurulmuş */
 MK_API int32_t mk_layer_entity_count(MkDoc* doc, int32_t i); /* sahnedeki ilkel sayısı */
+/* Katman çizgi kalınlığı (1/100 mm), -3 tanımsız. Ayar R2000+ dosyada LAYER tablosuna yazılır
+ * (R12'de yalnızca bu oturumda geçerli). Geri alınamaz; sonra mk_build_scene() çağrılmalı. */
+MK_API int32_t mk_layer_lweight(MkDoc* doc, int32_t i);
+MK_API int32_t mk_set_layer_lweight(MkDoc* doc, int32_t i, int32_t lweight);
+/* Çizim birimi ($INSUNITS): 0 birimsiz, 1 inç, 2 ayak, 4 mm, 5 cm, 6 m; başlıkta yoksa -1. */
+MK_API int32_t mk_insunits(MkDoc* doc);
 
 /* Sahne: blokları açar, eğrileri parçalara böler, tamponları üretir. */
 MK_API int32_t mk_build_scene(MkDoc* doc);
@@ -96,6 +102,13 @@ MK_API const MkPoly* mk_polys(MkDoc* doc);
 MK_API int32_t mk_text_count(MkDoc* doc);
 MK_API const MkText* mk_texts(MkDoc* doc);
 MK_API const char* mk_text_pool(MkDoc* doc);
+/* İlkellerin üst düzey nesne kimlikleri (mk_pick kimliği): çizgi parçası başına (vertices'teki sırayla,
+ * parça sayısı = çizgi float'ları / 4), dolgu halkası başına, yazı başına. */
+MK_API const int32_t* mk_seg_owners(MkDoc* doc);
+MK_API const int32_t* mk_poly_owners(MkDoc* doc);
+MK_API const int32_t* mk_text_owners(MkDoc* doc);
+/* Blok adı prefix ile başlayan son (en yeni) INSERT'ün kimliği; yoksa -1 (ör. antet "MK_TBL_ANTET_"). */
+MK_API int32_t mk_find_insert(MkDoc* doc, const char* prefix);
 
 /* ───────────── Düzenleme (2. aşama) ─────────────
  * Nesne kimliği = model alanındaki üst düzey nesne indeksi (silinse de sabit).

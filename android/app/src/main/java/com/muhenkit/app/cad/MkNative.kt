@@ -20,6 +20,11 @@ internal object MkNative {
     external fun textPool(doc: Long): ByteArray
     external fun layerNames(doc: Long): ByteArray
     external fun layerInts(doc: Long): IntArray
+    /** kind 0: çizgi parçası, 1: dolgu halkası, 2: yazı başına sahip nesne kimliği */
+    external fun owners(doc: Long, kind: Int): IntArray
+    external fun insunits(doc: Long): Int
+    external fun findInsert(doc: Long, prefix: ByteArray): Int
+    external fun setLayerLweight(doc: Long, layer: Int, lw: Int): Int
 
     // düzenleme
     external fun pick(doc: Long, x: Double, y: Double, tol: Double): Int

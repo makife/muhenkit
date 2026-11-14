@@ -429,6 +429,7 @@ public sealed partial class CadPage : Page
             if (Environment.GetEnvironmentVariable("MUHENKIT_SELFTEST") == "3") _ = SelfTestTables();
             if (Environment.GetEnvironmentVariable("MUHENKIT_SELFTEST") == "demo") _ = MakeDemo();
             if (Environment.GetEnvironmentVariable("MUHENKIT_SELFTEST") == "e") _ = SelfTestExport();
+            if (Environment.GetEnvironmentVariable("MUHENKIT_SELFTEST") == "ea") _ = SelfTestTitleExport();
             if (Environment.GetEnvironmentVariable("MUHENKIT_SELFTEST") == "ed") OnExport();
             if (Environment.GetEnvironmentVariable("MUHENKIT_SELFTEST") is ['f', var fk]) AddTable((TableForms.Kind)(fk - '1'));
         }
@@ -628,11 +629,16 @@ public sealed partial class CadPage : Page
 
     private static ExportOptions _exportOpt = new(ExportFormat.Pdf, Paper.All[0], PageOrientation.Auto, false, true);
     private static bool _openAfterExport = true;
+    private static readonly double[] UnitChoices = [1, 10, 1000];
+    private static readonly float[] LwChoices = [0.13f, 0.18f, 0.25f, 0.35f];
 
     private async void OnExport()
     {
         if (_doc == null) return;
+        var s = _doc.Scene;
         var o = _exportOpt;
+        // dosyada birim yazıyorsa onu kullan
+        if (s.Units is 1 or 2 or 4 or 5 or 6) o = o with { UnitMm = Exporter.UnitMm(s.Units) };
         RadioButtons Radio(string header, string[] items, int sel)
         {
             var r = new RadioButtons { Header = header, MaxColumns = items.Length };
@@ -645,17 +651,97 @@ public sealed partial class CadPage : Page
         var orient = Radio("Yön", ["Otomatik", "Yatay", "Dikey"], (int)o.Orientation);
         var area = Radio("Alan", ["Tüm çizim", "Ekranda görünen"], o.ViewOnly ? 1 : 0);
         var mono = new ToggleSwitch { Header = "Renk", OnContent = "Siyah-beyaz", OffContent = "Renkli", IsOn = o.Monochrome };
+        var scale = new ComboBox
+        {
+            Header = "Ölçek", MinWidth = 160, SelectedIndex = Math.Max(0, Array.IndexOf(Exporter.Scales, o.Scale)),
+            ItemsSource = Exporter.Scales.Select(k => k == 0 ? "Kâğıda sığdır" : $"1/{k}").ToList(),
+        };
+        string fileUnit = s.Units switch { 4 => "mm", 5 => "cm", 6 => "m", 1 => "inç", 2 => "ayak", _ => "belirtilmemiş" };
+        var unit = new ComboBox
+        {
+            Header = $"Çizim birimi (dosyada: {fileUnit})", MinWidth = 160, ItemsSource = new[] { "mm", "cm", "m" },
+            SelectedIndex = Math.Max(0, Array.FindIndex(UnitChoices, u => Math.Abs(u - o.UnitMm) < 1e-9)),
+        };
+        var lw = new ComboBox
+        {
+            Header = "Kalınlığı tanımsız çizgiler", MinWidth = 160, ItemsSource = LwChoices.Select(v => $"{v:0.00} mm").ToList(),
+            SelectedIndex = Math.Max(0, Array.IndexOf(LwChoices, o.DefaultLw)),
+        };
+        bool hasTitle = s.TitleBlock >= 0;
+        var titleBox = new CheckBox
+        {
+            Content = hasTitle ? "Firma antetini sağ alt köşeye yerleştir" : "Firma anteti yok (Ekle › Antet ile eklenir)",
+            IsChecked = hasTitle && o.TitleBlock, IsEnabled = hasTitle,
+        };
+        var footer = new CheckBox { Content = "Alt bilgi şeridi (dosya adı, ölçek, tarih)", IsChecked = o.Footer };
         var open = new CheckBox { Content = "Kaydettikten sonra aç (yazdırmak için)", IsChecked = _openAfterExport };
-        var panel = new StackPanel { Spacing = 14, MinWidth = 420 };
-        foreach (var e in new UIElement[] { fmt, paper, orient, area, mono, open }) panel.Children.Add(e);
+        var info = new TextBlock { TextWrapping = TextWrapping.Wrap, FontSize = 12.5 };
+        var fix = new HyperlinkButton { Padding = new Thickness(0), Visibility = Visibility.Collapsed };
+
+        ExportOptions Read() => new((ExportFormat)Math.Max(0, fmt.SelectedIndex), Paper.All[Math.Max(0, paper.SelectedIndex)],
+            (PageOrientation)Math.Max(0, orient.SelectedIndex), area.SelectedIndex == 1, mono.IsOn,
+            Exporter.Scales[Math.Max(0, scale.SelectedIndex)], UnitChoices[Math.Max(0, unit.SelectedIndex)],
+            LwChoices[Math.Max(0, lw.SelectedIndex)], titleBox.IsChecked == true, footer.IsChecked == true);
+        (Paper, PageOrientation)? suggestion = null;
+        void Update()
+        {
+            var x = Read();
+            var win = ExportWindow(x);
+            var L = Exporter.Layout(win, Exporter.TitleBounds(s, x), x);
+            string dir = L.Landscape ? "yatay" : "dikey";
+            suggestion = null;
+            if (x.Scale == 0)
+                info.Text = $"Çizim kâğıda sığdırılır: yaklaşık 1/{L.EffScale:0} (ölçü alınamaz). Ölçekli çıktı için bir ölçek seçin.";
+            else if (L.Fits)
+                info.Text = $"1/{x.Scale}: çizim {L.NeedWmm:0} × {L.NeedHmm:0} mm — {x.Paper.Name} {dir} kâğıda sığıyor.";
+            else
+            {
+                suggestion = Exporter.SuggestPaper(win, Exporter.TitleBounds(s, x), x);
+                info.Text = $"1/{x.Scale}: çizim {L.NeedWmm:0} × {L.NeedHmm:0} mm — {x.Paper.Name} {dir} kâğıda SIĞMIYOR, taşan kısım kesilir." +
+                            (suggestion == null ? " A0'a da sığmıyor: daha küçük ölçek seçin." : "");
+            }
+            fix.Visibility = suggestion != null ? Visibility.Visible : Visibility.Collapsed;
+            if (suggestion is { } sg) fix.Content = $"{sg.Item1.Name} {(sg.Item2 == PageOrientation.Portrait ? "dikey" : "yatay")} kâğıda geç";
+        }
+        fix.Click += (_, _) =>
+        {
+            if (suggestion is not { } sg) return;
+            paper.SelectedIndex = Array.IndexOf(Paper.All, sg.Item1);
+            orient.SelectedIndex = (int)sg.Item2;
+        };
+        foreach (var r in new[] { fmt, orient, area }) r.SelectionChanged += (_, _) => Update();
+        foreach (var cbx in new[] { paper, scale, unit, lw }) cbx.SelectionChanged += (_, _) => Update();
+        titleBox.Click += (_, _) => Update();
+        footer.Click += (_, _) => Update();
+
+        var left = new StackPanel { Spacing = 14 };
+        foreach (var e in new UIElement[] { fmt, paper, orient, area, mono }) left.Children.Add(e);
+        var right = new StackPanel { Spacing = 14 };
+        foreach (var e in new UIElement[] { scale, unit, lw, titleBox, footer }) right.Children.Add(e);
+        var cols = new Grid { ColumnSpacing = 28 };
+        cols.ColumnDefinitions.Add(new ColumnDefinition());
+        cols.ColumnDefinitions.Add(new ColumnDefinition());
+        cols.Children.Add(left);
+        Grid.SetColumn(right, 1);
+        cols.Children.Add(right);
+        var panel = new StackPanel { Spacing = 12, MinWidth = 560 };
+        panel.Children.Add(cols);
+        panel.Children.Add(new Border
+        {
+            Padding = new Thickness(12, 10, 12, 10), CornerRadius = new CornerRadius(6),
+            Background = new SolidColorBrush(Color.FromArgb(40, 120, 160, 255)),
+            Child = new StackPanel { Spacing = 4, Children = { info, fix } },
+        });
+        panel.Children.Add(open);
         var dlg = new ContentDialog
         {
-            XamlRoot = XamlRoot, Title = "Dışa aktar", Content = panel, PrimaryButtonText = "Kaydet…", CloseButtonText = "Vazgeç",
+            XamlRoot = XamlRoot, Title = "Dışa aktar", Content = new ScrollViewer { Content = panel }, PrimaryButtonText = "Kaydet…", CloseButtonText = "Vazgeç",
             DefaultButton = ContentDialogButton.Primary, RequestedTheme = ElementTheme.Dark,
         };
+        dlg.Resources["ContentDialogMaxWidth"] = 720.0;
+        Update();
         if (await dlg.ShowAsync() != ContentDialogResult.Primary) { Canvas.Focus(FocusState.Programmatic); return; }
-        o = _exportOpt = new ExportOptions((ExportFormat)Math.Max(0, fmt.SelectedIndex), Paper.All[Math.Max(0, paper.SelectedIndex)],
-            (PageOrientation)Math.Max(0, orient.SelectedIndex), area.SelectedIndex == 1, mono.IsOn);
+        o = _exportOpt = Read();
         _openAfterExport = open.IsChecked == true;
         bool pdf = o.Format == ExportFormat.Pdf;
         var picker = new FileSavePicker { SuggestedFileName = Path.GetFileNameWithoutExtension(_project?.Name ?? _doc.Name) };
@@ -677,11 +763,18 @@ public sealed partial class CadPage : Page
         Canvas.Focus(FocusState.Programmatic);
     }
 
+    /// <summary>Çıktıya girecek dünya penceresi: ekranda görünen ya da tüm çizim (sağ alta alınan antet hariç)</summary>
+    private (double X0, double Y0, double X1, double Y1) ExportWindow(ExportOptions o)
+    {
+        var s = _doc!.Scene;
+        return o.ViewOnly ? Canvas.ViewWindow() : Exporter.Extents(s, o.TitleBlock ? s.TitleBlock : -1);
+    }
+
     private async Task ExportTo(string path, ExportOptions o, Windows.Storage.StorageFile? file = null)
     {
         var s = _doc!.Scene;
         var hidden = Canvas.Hidden.ToHashSet();
-        var win = o.ViewOnly ? Canvas.ViewWindow() : Exporter.Extents(s);
+        var win = ExportWindow(o);
         var title = Path.GetFileNameWithoutExtension(_project?.Name ?? _doc.Name);
         var bytes = await Task.Run(() => Exporter.Render(s, hidden, win, o, title));
         await WriteBytes(path, bytes, file);
@@ -739,6 +832,13 @@ public sealed partial class CadPage : Page
             sw.Restart();
             await ExportTo(Path.Combine(tmp, "muhenkit_export.png"), new(ExportFormat.Png, Paper.All[0], PageOrientation.Auto, false, false));
             log.AppendLine($"png {new FileInfo(Path.Combine(tmp, "muhenkit_export.png")).Length} bayt, {sw.ElapsedMilliseconds} ms");
+            // ölçekli: 1/50, dosyadaki birimle, antet sağ altta, alt bilgi şeridiyle
+            var s50 = new ExportOptions(ExportFormat.Pdf, Paper.All[0], PageOrientation.Auto, false, true, 50, Exporter.UnitMm(_doc!.Scene.Units), 0.18f, true, true);
+            var sug = Exporter.SuggestPaper(ExportWindow(s50), Exporter.TitleBounds(_doc.Scene, s50), s50);
+            if (sug is { } g) s50 = s50 with { Paper = g.Paper, Orientation = g.Orientation };
+            var L = Exporter.Layout(ExportWindow(s50), Exporter.TitleBounds(_doc.Scene, s50), s50);
+            await ExportTo(Path.Combine(tmp, "muhenkit_export_50.pdf"), s50);
+            log.AppendLine($"1/50 {s50.Paper.Name} {(L.Landscape ? "yatay" : "dikey")} sığdı={L.Fits} antet={L.HasTitle} k={L.K:0.####} ölçek={L.EffScale:0.##} birimMm={s50.UnitMm} {L.NeedWmm:0}x{L.NeedHmm:0}mm");
         }
         catch (Exception ex) { log.AppendLine("HATA " + ex); }
         await File.WriteAllTextAsync(Path.Combine(Path.GetTempPath(), "muhenkit_selftest.txt"), log.ToString());
@@ -1018,6 +1118,26 @@ public sealed partial class CadPage : Page
         await File.WriteAllTextAsync(Path.Combine(Path.GetTempPath(), "muhenkit_selftest.txt"), log.ToString());
     }
 
+    /// <summary>MUHENKIT_SELFTEST=ea: çizimin sağına örnek antet koyar (ölçek "1/50"), sonra =e gibi dışa aktarır</summary>
+    private async Task SelfTestTitleExport()
+    {
+        async Task Idle() { while (_ed.Busy) await Task.Delay(20); await Task.Delay(30); }
+        var vals = ProjectTables.TitleFields.ToDictionary(f => f.Key, f => f.Default);
+        vals["firma"] = "ÖRNEK ELEKTRİK"; vals["sorumlu"] = "AD SOYAD"; vals["olcek"] = "1/100";
+        var t = ProjectTables.TitleBlock(_ed.TextHeight, vals);
+        await Task.Delay(500);
+        await Idle();
+        var s = _doc!.Scene;
+        double x = s.MaxX + (s.MaxX - s.MinX) * 0.1, y = s.MinY, tol = Canvas.Tolerance;
+        _ed.StartTable(t);
+        _ed.Move(x, y, tol, false); _ed.Press(x, y, tol, false); _ed.Release(x, y, tol);
+        await Idle();
+        for (int i = 0; i < 100 && _doc.Scene.TitleBlock < 0; i++) await Task.Delay(30);
+        App.Log($"antet öz-testi: kimlik {_doc.Scene.TitleBlock}, araç {_ed.Tool}, nesne {_doc.Scene.EntityCount}");
+        _ed.Escape();
+        await SelfTestExport();
+    }
+
     /// <summary>MUHENKIT_SELFTEST=3: üç proje tablosunu örnek verilerle üretip yan yana yerleştirir</summary>
     private async Task SelfTestTables()
     {
@@ -1125,6 +1245,9 @@ public sealed partial class CadPage : Page
 
     // ───────────────────────── katmanlar ─────────────────────────
 
+    /// <summary>Katman kalınlık seçenekleri (1/100 mm), -3 = varsayılan</summary>
+    private static readonly int[] LayerLws = [-3, 9, 13, 18, 25, 35, 50, 70, 100];
+
     private void FillLayers(CadScene s)
     {
         LayerList.Items.Clear();
@@ -1148,6 +1271,7 @@ public sealed partial class CadPage : Page
             row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
             row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
             row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
             row.Children.Add(cb);
             var sw = new Border { Width = 12, Height = 12, CornerRadius = new CornerRadius(3), Background = new SolidColorBrush(Color.FromArgb(255, r, g, b)), VerticalAlignment = VerticalAlignment.Center };
             Grid.SetColumn(sw, 1);
@@ -1157,6 +1281,16 @@ public sealed partial class CadPage : Page
             txt.Children.Add(new TextBlock { Text = $"{l.Count} nesne", FontSize = 11, Foreground = new SolidColorBrush(Color.FromArgb(255, 141, 168, 151)) });
             Grid.SetColumn(txt, 2);
             row.Children.Add(txt);
+            // çizgi kalınlığı (PDF çıktısında kullanılır; R2000+ DXF'e yazılır)
+            var lw = new ComboBox
+            {
+                ItemsSource = LayerLws.Select(v => v < 0 ? "Varsayılan" : $"{v / 100.0:0.00} mm").ToList(), FontSize = 12, MinWidth = 0, Width = 104,
+                SelectedIndex = Math.Max(0, Array.IndexOf(LayerLws, l.LWeight)), VerticalAlignment = VerticalAlignment.Center,
+            };
+            ToolTipService.SetToolTip(lw, "Çizgi kalınlığı (PDF çıktısı)");
+            lw.SelectionChanged += (_, _) => { if (lw.SelectedIndex >= 0 && LayerLws[lw.SelectedIndex] != l.LWeight) _ed.SetLayerLWeight(idx, LayerLws[lw.SelectedIndex]); };
+            Grid.SetColumn(lw, 3);
+            row.Children.Add(lw);
             LayerList.Items.Add(row);
         }
     }

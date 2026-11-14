@@ -284,6 +284,8 @@ class Reader {
         l.aci = c == 0 ? 7 : std::abs(c);
         l.off = c < 0;
         l.frozen = (g.n(70) & 1) != 0;
+        int lw = g.n(370, -3);
+        l.lw = lw >= 0 ? lw : -3;
       } else {
         pos_++;
       }

@@ -34,6 +34,7 @@ struct Entity {
   std::string s(int code, const std::string& def = "") const;
   std::string layer() const { return s(8, "0"); }
   int color() const { return n(62, 256); }  // 256 BYLAYER, 0 BYBLOCK
+  int lweight() const { return n(370, -1); }  // -1 BYLAYER, -2 BYBLOCK, -3 varsayılan
   bool flipped() const { return f(230, 1) < 0; }  // OCS Z = -1
 };
 
@@ -42,6 +43,7 @@ struct Layer {
   int aci = 7;
   bool off = false;
   bool frozen = false;
+  int lw = -3;        // çizgi kalınlığı (1/100 mm), -3 tanımsız
   int32_t count = 0;  // sahnedeki ilkel sayısı
 };
 

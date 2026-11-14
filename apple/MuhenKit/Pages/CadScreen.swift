@@ -143,7 +143,11 @@ struct CadScreen: View {
                 case .title: TitleBlockForm(textHeight: model.editor.textHeight) { model.editor.startTable($0) }
                 }
             }
-            .sheet(isPresented: $showExport) { ExportSheet(options: $exportOptions, onGo: runExport) }
+            .sheet(isPresented: $showExport) {
+                if let s = model.editor.scene {
+                    ExportSheet(scene: s, options: $exportOptions, windowOf: exportWindow, onGo: runExport)
+                }
+            }
             .sheet(isPresented: $showCounts) { CountsSheet(items: model.editor.counts()) }
             .fileImporter(isPresented: $importing, allowedContentTypes: [.dxf, .data]) { r in
                 if case .success(let url) = r {
@@ -255,18 +259,21 @@ struct CadScreen: View {
         exporting = true
     }
 
+    /// Çıktıya girecek dünya penceresi: ekranda görünen ya da tüm çizim (sağ alta alınan antet hariç)
+    private func exportWindow(_ o: ExportOptions) -> CGRect {
+        guard let s = model.editor.scene else { return .zero }
+        if o.viewOnly {
+            let v = model.view, size = canvasSize
+            let hw = size.width / 2 / v.zoom, hh = size.height / 2 / v.zoom
+            return CGRect(x: v.cx - hw, y: v.cy - hh, width: hw * 2, height: hh * 2)
+        }
+        return Exporter.extents(s, exclude: o.titleBlock ? s.titleBlock : -1)
+    }
+
     private func runExport() {
         guard let s = model.editor.scene else { return }
         let o = exportOptions
-        let v = model.view
-        let size = canvasSize
-        let win: CGRect
-        if o.viewOnly {
-            let hw = size.width / 2 / v.zoom, hh = size.height / 2 / v.zoom
-            win = CGRect(x: v.cx - hw, y: v.cy - hh, width: hw * 2, height: hh * 2)
-        } else {
-            win = Exporter.extents(s)
-        }
+        let win = exportWindow(o)
         let name = model.project?.name ?? "cizim"
         let data = Exporter.render(s, hidden: model.hidden, window: win, o, title: name)
         // sayfa kapanırken ikinci sayfa açılamaz: bir sonraki döngüde
@@ -850,6 +857,9 @@ private struct EmptyCad: View {
     }
 }
 
+/// Katman kalınlık seçenekleri (1/100 mm), -3 = varsayılan
+private let layerLws = [-3, 9, 13, 18, 25, 35, 50, 70, 100]
+
 private struct LayersSheet: View {
     @ObservedObject var model: CadModel
     @ObservedObject var editor: CadEditor
@@ -867,6 +877,13 @@ private struct LayersSheet: View {
                             Button("Seçimi etkin katmana taşı") { editor.applyLayer(editor.activeLayer) }
                         }
                     }
+                    Section {
+                        ForEach(Array(s.layers.enumerated()), id: \.offset) { i, l in
+                            Picker(selection: Binding(get: { l.lweight }, set: { w in if w != l.lweight { editor.setLayerLweight(i, w) } })) {
+                                ForEach(layerLws, id: \.self) { w in Text(w < 0 ? "Varsayılan" : String(format: "%.2f mm", Double(w) / 100)).tag(w) }
+                            } label: { Text(l.name) }
+                        }
+                    } header: { Text("Çizgi kalınlığı") } footer: { Text("Kalınlık PDF çıktısında kullanılır.") }
                     Section("Görünürlük") {
                         ForEach(Array(s.layers.enumerated()), id: \.offset) { i, l in
                             Toggle(isOn: Binding(get: { !model.hidden.contains(i) }, set: { on in

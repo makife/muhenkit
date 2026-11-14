@@ -66,20 +66,40 @@ FN(jfloatArray, vertices)(JNIEnv* env, jobject, jlong h) {
   return floats(env, mk_vertices(D(h)), static_cast<size_t>(mk_vertex_float_count(D(h))));
 }
 
-/// Her parti: katman, rgb, float başlangıcı, float sayısı
+/// Her parti: katman, rgb, float başlangıcı, float sayısı, çizgi kalınlığı (1/100 mm, -3 tanımsız)
 FN(jintArray, batches)(JNIEnv* env, jobject, jlong h) {
   int n = mk_batch_count(D(h));
   const MkBatch* b = mk_batches(D(h));
   std::vector<jint> v;
-  v.reserve(n * 4);
+  v.reserve(n * 5);
   for (int i = 0; i < n; i++) {
     v.push_back(b[i].layer);
     v.push_back(static_cast<jint>(b[i].rgb));
     v.push_back(static_cast<jint>(b[i].offset));
     v.push_back(static_cast<jint>(b[i].count));
+    v.push_back(b[i].lweight);
   }
   return ints(env, v);
 }
+
+/// İlkellerin sahip nesneleri: çizgi parçası / dolgu halkası / yazı başına (kind 0/1/2)
+FN(jintArray, owners)(JNIEnv* env, jobject, jlong h, jint kind) {
+  size_t n = 0;
+  const int32_t* p = nullptr;
+  if (kind == 0) {
+    for (int i = 0; i < mk_batch_count(D(h)); i++) n += static_cast<size_t>(mk_batches(D(h))[i].count / 4);
+    p = mk_seg_owners(D(h));
+  } else if (kind == 1) {
+    n = static_cast<size_t>(mk_poly_count(D(h)));
+    p = mk_poly_owners(D(h));
+  } else {
+    n = static_cast<size_t>(mk_text_count(D(h)));
+    p = mk_text_owners(D(h));
+  }
+  return ints(env, std::vector<jint>(p, p + n));
+}
+
+FN(jint, insunits)(JNIEnv*, jobject, jlong h) { return mk_insunits(D(h)); }
 
 /// Her poligon: katman, rgb, grup, nokta sayısı, float başlangıcı, alfa*1000
 FN(jintArray, polys)(JNIEnv* env, jobject, jlong h) {
@@ -141,18 +161,21 @@ FN(jbyteArray, layerNames)(JNIEnv* env, jobject, jlong h) {
   return bytes(env, s.data(), s.size());
 }
 
-/// Her katman: rgb, bayraklar (1 kapalı, 2 dondurulmuş), nesne sayısı
+/// Her katman: rgb, bayraklar (1 kapalı, 2 dondurulmuş), nesne sayısı, çizgi kalınlığı
 FN(jintArray, layerInts)(JNIEnv* env, jobject, jlong h) {
   int n = mk_layer_count(D(h));
   std::vector<jint> v;
-  v.reserve(n * 3);
+  v.reserve(n * 4);
   for (int i = 0; i < n; i++) {
     v.push_back(static_cast<jint>(mk_layer_rgb(D(h), i)));
     v.push_back(mk_layer_flags(D(h), i));
     v.push_back(mk_layer_entity_count(D(h), i));
+    v.push_back(mk_layer_lweight(D(h), i));
   }
   return ints(env, v);
 }
+
+FN(jint, setLayerLweight)(JNIEnv*, jobject, jlong h, jint layer, jint lw) { return mk_set_layer_lweight(D(h), layer, lw); }
 
 // ───────────────────────── düzenleme ─────────────────────────
 
@@ -265,6 +288,8 @@ FN(jint, setLayer)(JNIEnv* env, jobject, jlong h, jintArray ids, jbyteArray laye
   auto v = idList(env, ids);
   return mk_set_layer(D(h), v.data(), static_cast<int32_t>(v.size()), utf8(env, layer).c_str());
 }
+
+FN(jint, findInsert)(JNIEnv* env, jobject, jlong h, jbyteArray prefix) { return mk_find_insert(D(h), utf8(env, prefix).c_str()); }
 
 FN(jint, setColor)(JNIEnv* env, jobject, jlong h, jintArray ids, jint aci) {
   auto v = idList(env, ids);

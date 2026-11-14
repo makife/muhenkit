@@ -61,6 +61,49 @@ MK_API int32_t mk_layer_flags(MkDoc* d, int32_t i) {
   return (l.off ? 1 : 0) | (l.frozen ? 2 : 0);
 }
 MK_API int32_t mk_layer_entity_count(MkDoc* d, int32_t i) { return d->doc->layers.at(i).count; }
+MK_API int32_t mk_layer_lweight(MkDoc* d, int32_t i) { return d->doc->layers.at(i).lw; }
+
+MK_API int32_t mk_set_layer_lweight(MkDoc* d, int32_t i, int32_t lw) {
+  auto& doc = *d->doc;
+  if (i < 0 || i >= static_cast<int32_t>(doc.layers.size()) || lw < -3 || lw > 211) return 0;
+  auto& layer = doc.layers[i];
+  layer.lw = lw >= 0 ? lw : -3;
+  doc.dirty = true;
+  if (doc.versionNumber() < 1015) return 1;  // R12–R14 LAYER kaydında kalınlık yok
+  // TABLES bölümündeki LAYER kaydına 370 yaz (yoksa çizgi tipinin (6) ya da rengin (62) arkasına ekle)
+  std::string val = std::to_string(lw >= 0 ? lw : -3);
+  for (auto& sec : doc.sections) {
+    if (sec.name != "TABLES") continue;
+    auto& t = sec.tags;
+    for (size_t k = 0; k < t.size(); k++) {
+      if (t[k].code != 0 || t[k].value != "LAYER") continue;
+      size_t end = k + 1;
+      while (end < t.size() && t[end].code != 0) end++;
+      bool match = false;
+      for (size_t j = k + 1; j < end; j++)
+        if (t[j].code == 2 && t[j].value == layer.name) match = true;
+      if (!match) continue;
+      size_t at = 0;
+      for (size_t j = k + 1; j < end; j++) {
+        if (t[j].code == 370) { t[j].value = val; return 1; }
+        if (t[j].code == 2 || t[j].code == 62 || t[j].code == 6) at = j + 1;
+      }
+      if (at) t.insert(t.begin() + static_cast<std::ptrdiff_t>(at), mk::Tag{370, val});
+      return 1;
+    }
+  }
+  return 1;
+}
+
+MK_API int32_t mk_insunits(MkDoc* d) {
+  for (const auto& sec : d->doc->sections) {
+    if (sec.name != "HEADER") continue;
+    const auto& t = sec.tags;
+    for (size_t k = 0; k + 1 < t.size(); k++)
+      if (t[k].code == 9 && t[k].value == "$INSUNITS") return t[k + 1].i();
+  }
+  return -1;
+}
 
 MK_API int32_t mk_build_scene(MkDoc* d) {
   try {
@@ -87,6 +130,17 @@ MK_API const MkPoly* mk_polys(MkDoc* d) { return d->doc->polys.data(); }
 MK_API int32_t mk_text_count(MkDoc* d) { return static_cast<int32_t>(d->doc->texts.size()); }
 MK_API const MkText* mk_texts(MkDoc* d) { return d->doc->texts.data(); }
 MK_API const char* mk_text_pool(MkDoc* d) { return d->doc->textPool.c_str(); }
+MK_API const int32_t* mk_seg_owners(MkDoc* d) { return d->doc->segOwner.data(); }
+MK_API const int32_t* mk_poly_owners(MkDoc* d) { return d->doc->polyOwner.data(); }
+MK_API const int32_t* mk_text_owners(MkDoc* d) { return d->doc->textOwner.data(); }
+
+MK_API int32_t mk_find_insert(MkDoc* d, const char* prefix) {
+  std::string p = prefix ? prefix : "";
+  const auto& es = d->doc->entities;
+  for (int i = static_cast<int>(es.size()) - 1; i >= 0; i--)
+    if (!es[i].deleted && es[i].type == "INSERT" && es[i].s(2).compare(0, p.size(), p) == 0) return i;
+  return -1;
+}
 
 // ───────────────────────── düzenleme ─────────────────────────
 

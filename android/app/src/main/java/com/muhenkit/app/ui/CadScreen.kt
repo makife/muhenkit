@@ -1,5 +1,7 @@
 package com.muhenkit.app.ui
 
+import androidx.compose.runtime.LaunchedEffect
+import android.graphics.RectF
 import android.net.Uri
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.LocalActivity
@@ -289,7 +291,7 @@ fun CadScreen(request: CadRequest?, onExit: () -> Unit = {}) {
     val s = ed.scene
     if (showLayers && s != null) {
         ModalBottomSheet(onDismissRequest = { showLayers = false }) {
-            LayerSheet(s, ed.hidden, ed.activeLayer, onActive = { ed.activeLayer = it }, onChange = ed::changeHidden)
+            LayerSheet(s, ed.hidden, ed.activeLayer, onActive = { ed.activeLayer = it }, onChange = ed::changeHidden, onLweight = ed::setLayerLweight)
         }
     }
 
@@ -337,7 +339,7 @@ fun CadScreen(request: CadRequest?, onExit: () -> Unit = {}) {
 
     if (showExport && s != null) {
         ModalBottomSheet(onDismissRequest = { if (!exporting) showExport = false }) {
-            ExportSheet(exporting, onGo = ::export)
+            ExportSheet(s, ed::exportWindow, exporting, onGo = ::export)
         }
     }
 
@@ -951,19 +953,72 @@ private fun <T> OptionRow(title: String, options: List<T>, selected: T, label: (
     }
 }
 
+/** Son seçilen dışa aktarma ayarları (uygulama açıkken hatırlanır) */
+private var lastExport = ExportOptions()
+
 @Composable
-private fun ExportSheet(busy: Boolean, onGo: (ExportOptions, Int) -> Unit) {
-    var o by remember { mutableStateOf(ExportOptions()) }
-    Column(Modifier.padding(horizontal = 16.dp).padding(bottom = 24.dp)) {
+private fun ExportSheet(scene: CadScene, windowOf: (ExportOptions) -> RectF?, busy: Boolean, onGo: (ExportOptions, Int) -> Unit) {
+    var o by remember {
+        // dosyada birim yazıyorsa onu kullan
+        val u = scene.units
+        mutableStateOf(if (u in listOf(1, 2, 4, 5, 6)) lastExport.copy(unitMm = Exporter.unitMm(u)) else lastExport)
+    }
+    LaunchedEffect(o) { lastExport = o }
+    val hasTitle = scene.titleBlock >= 0
+    val fileUnit = when (scene.units) { 4 -> "mm"; 5 -> "cm"; 6 -> "m"; 1 -> "inç"; 2 -> "ayak"; else -> "belirtilmemiş" }
+    // ölçek bilgisi ve uygun kâğıt önerisi
+    val (info, suggestion) = remember(o) {
+        val win = windowOf(o) ?: return@remember "" to null
+        val title = Exporter.titleBounds(scene, o)
+        val L = Exporter.layout(win, title, o)
+        val dir = if (L.landscape) "yatay" else "dikey"
+        when {
+            o.scale == 0 -> "Çizim kâğıda sığdırılır: yaklaşık 1/${Math.round(L.effScale)} (ölçü alınamaz). Ölçekli çıktı için ölçek seçin." to null
+            L.fits -> "1/${o.scale}: çizim ${Math.round(L.needWmm)} × ${Math.round(L.needHmm)} mm — ${o.paper.label} $dir kâğıda sığıyor." to null
+            else -> {
+                val sg = Exporter.suggestPaper(win, title, o)
+                ("1/${o.scale}: çizim ${Math.round(L.needWmm)} × ${Math.round(L.needHmm)} mm — ${o.paper.label} $dir kâğıda SIĞMIYOR, taşan kısım kesilir." +
+                    if (sg == null) " A0'a da sığmıyor: daha küçük ölçek seçin." else "") to sg
+            }
+        }
+    }
+    Column(Modifier.padding(horizontal = 16.dp).padding(bottom = 24.dp).verticalScroll(rememberScrollState())) {
         Text("Dışa aktar", style = MaterialTheme.typography.titleMedium)
         Spacer(Modifier.height(10.dp))
         OptionRow("Biçim", ExportFormat.entries, o.format, { it.label }) { o = o.copy(format = it) }
+        OptionRow("Ölçek", Exporter.SCALES, o.scale, { if (it == 0) "Kâğıda sığdır" else "1/$it" }) { o = o.copy(scale = it) }
         OptionRow("Kâğıt", Paper.entries, o.paper, { it.label }) { o = o.copy(paper = it) }
         OptionRow("Yön", Orientation.entries, o.orientation, { it.label }) { o = o.copy(orientation = it) }
+        Surface(color = Color(0x2678A0FF), shape = RoundedCornerShape(8.dp), modifier = Modifier.fillMaxWidth().padding(bottom = 10.dp)) {
+            Column(Modifier.padding(12.dp)) {
+                Text(info, style = MaterialTheme.typography.bodySmall)
+                suggestion?.let { (p, d) ->
+                    TextButton(onClick = { o = o.copy(paper = p, orientation = d) }, contentPadding = PaddingValues(0.dp)) {
+                        Text("${p.label} ${if (d == Orientation.PORTRAIT) "dikey" else "yatay"} kâğıda geç")
+                    }
+                }
+            }
+        }
+        OptionRow("Çizim birimi (dosyada: $fileUnit)", listOf(1.0, 10.0, 1000.0), o.unitMm, { when (it) { 1.0 -> "mm"; 10.0 -> "cm"; else -> "m" } }) {
+            o = o.copy(unitMm = it)
+        }
+        OptionRow("Kalınlığı tanımsız çizgiler", listOf(0.13f, 0.18f, 0.25f, 0.35f), o.defaultLw, { "%.2f mm".format(it) }) { o = o.copy(defaultLw = it) }
         OptionRow("Alan", listOf(false, true), o.viewOnly, { if (it) "Ekrandaki görünüm" else "Tüm çizim" }) { o = o.copy(viewOnly = it) }
         OptionRow("Renk", listOf(true, false), o.monochrome, { if (it) "Siyah-beyaz" else "Renkli" }) { o = o.copy(monochrome = it) }
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                if (hasTitle) "Firma antetini sağ alt köşeye yerleştir" else "Firma anteti yok (Ekle › Tablo › Antet)",
+                modifier = Modifier.weight(1f),
+                color = if (hasTitle) Color.Unspecified else MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Switch(checked = hasTitle && o.titleBlock, enabled = hasTitle, onCheckedChange = { o = o.copy(titleBlock = it) })
+        }
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text("Alt bilgi şeridi (dosya adı, ölçek, tarih)", modifier = Modifier.weight(1f))
+            Switch(checked = o.footer, onCheckedChange = { o = o.copy(footer = it) })
+        }
         Text(
-            "Gizlediğin katmanlar çıktıya girmez. Çizim kâğıda sığdırılır.",
+            "Gizlediğin katmanlar çıktıya girmez. Pafta: solda 20 mm cilt payı, diğer kenarlar 10 mm (TS EN ISO 5457).",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
@@ -1097,8 +1152,16 @@ private fun TextDialog(defaultHeight: Double, onDismiss: () -> Unit, onOk: (Stri
 
 private fun trimNum(v: Double): String = if (v == Math.floor(v)) v.toLong().toString() else "%.3f".format(v).trimEnd('0').trimEnd('.', ',')
 
+/** Katman kalınlık seçenekleri (1/100 mm), -3 = varsayılan */
+private val LAYER_LWS = listOf(-3, 9, 13, 18, 25, 35, 50, 70, 100)
+
+private fun lwLabel(lw: Int) = if (lw < 0) "Varsayılan" else "%.2f mm".format(lw / 100f)
+
 @Composable
-private fun LayerSheet(scene: CadScene, hidden: Set<Int>, active: String, onActive: (String) -> Unit, onChange: (Set<Int>) -> Unit) {
+private fun LayerSheet(
+    scene: CadScene, hidden: Set<Int>, active: String, onActive: (String) -> Unit, onChange: (Set<Int>) -> Unit,
+    onLweight: (Int, Int) -> Unit,
+) {
     Column(Modifier.padding(horizontal = 16.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text("Katmanlar", style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
@@ -1106,7 +1169,7 @@ private fun LayerSheet(scene: CadScene, hidden: Set<Int>, active: String, onActi
             TextButton(onClick = { onChange(scene.layers.indices.toSet()) }) { Text("Tümünü kapat") }
         }
         Text(
-            "Yeni çizgi ve yazılar etkin katmana eklenir. Etkin yapmak için katman adına dokunun.",
+            "Yeni çizgi ve yazılar etkin katmana eklenir. Etkin yapmak için katman adına dokunun. Kalınlık PDF çıktısında kullanılır.",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
@@ -1134,6 +1197,21 @@ private fun LayerSheet(scene: CadScene, hidden: Set<Int>, active: String, onActi
                             if (isActive) "etkin · ${l.count} nesne" else "${l.count} nesne",
                             fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
+                    }
+                    Box {
+                        var open by remember { mutableStateOf(false) }
+                        TextButton(onClick = { open = true }, contentPadding = PaddingValues(horizontal = 8.dp)) {
+                            Text(if (l.lweight < 0) "—" else "%.2f".format(l.lweight / 100f), fontSize = 13.sp)
+                        }
+                        DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
+                            for (w in LAYER_LWS) DropdownMenuItem(
+                                text = { Text(lwLabel(w), fontWeight = if (w == l.lweight) FontWeight.Bold else null) },
+                                onClick = {
+                                    open = false
+                                    if (w != l.lweight) onLweight(i, w)
+                                },
+                            )
+                        }
                     }
                     Switch(checked = i !in hidden, onCheckedChange = { on -> onChange(if (on) hidden - i else hidden + i) })
                 }
