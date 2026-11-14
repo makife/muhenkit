@@ -11,7 +11,9 @@ public sealed record ProjectMeta(
     /// <summary>Görünüm (mutlak dünya koordinatı): merkez x, y ve yakınlaştırma</summary>
     double[]? View = null,
     int[]? Hidden = null,
-    long SizeBytes = 0);
+    long SizeBytes = 0,
+    /// <summary>Kullanıcının seçtiği çizim birimi (4 mm, 5 cm, 6 m); eski DXF sürümleri birimi dosyada tutamaz</summary>
+    int Units = -1);
 
 /// <summary>
 /// "Projelerim": açılan her DXF uygulamanın kendi alanına kopyalanır, düzenlemeler bu kopyaya

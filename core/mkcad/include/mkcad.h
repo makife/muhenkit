@@ -88,6 +88,8 @@ MK_API int32_t mk_layer_lweight(MkDoc* doc, int32_t i);
 MK_API int32_t mk_set_layer_lweight(MkDoc* doc, int32_t i, int32_t lweight);
 /* Çizim birimi ($INSUNITS): 0 birimsiz, 1 inç, 2 ayak, 4 mm, 5 cm, 6 m; başlıkta yoksa -1. */
 MK_API int32_t mk_insunits(MkDoc* doc);
+/* Çizim birimini ayarla (4 mm, 5 cm, 6 m). R2000+ dosyada başlığa $INSUNITS yazılır; eski sürümde yalnız oturumda. */
+MK_API int32_t mk_set_insunits(MkDoc* doc, int32_t units);
 
 /* Sahne: blokları açar, eğrileri parçalara böler, tamponları üretir. */
 MK_API int32_t mk_build_scene(MkDoc* doc);
@@ -137,6 +139,13 @@ MK_API int32_t mk_add_text(MkDoc* doc, const char* layer, double x, double y, do
  * ayrı çizgilere dönüşür. Dönen: ilk yeni kimlik veya -1. */
 MK_API int32_t mk_add_circle(MkDoc* doc, const char* layer, double cx, double cy, double r);
 MK_API int32_t mk_add_polyline(MkDoc* doc, const char* layer, const double* xy, int32_t n, int32_t closed);
+/* Yay: merkez, yarıçap, başlangıç/bitiş açısı (derece, saat yönü tersine a0'dan a1'e). Yeni kimlik veya -1. */
+MK_API int32_t mk_add_arc(MkDoc* doc, const char* layer, double cx, double cy, double r, double a0, double a1);
+/* Düzenlenebilir geometri: "anahtar=değer" satırları, dünya koordinatında.
+ * LINE: x1 y1 x2 y2 · CIRCLE: cx cy r · ARC: cx cy r a0 a1 · başka tür: "". */
+MK_API const char* mk_entity_props(MkDoc* doc, int32_t id);
+/* Aynı biçimde (yalnız değişen anahtarlar da olur) geometriyi değiştirir; geri alınabilir. 1 tamam, 0 desteklenmiyor/geçersiz. */
+MK_API int32_t mk_set_entity_props(MkDoc* doc, int32_t id, const char* kv);
 /* Ötele: (px,py) tarafında d mesafede paralel kopya. Yeni kimlik; desteklenmiyorsa -1. */
 MK_API int32_t mk_offset(MkDoc* doc, int32_t id, double d, double px, double py);
 

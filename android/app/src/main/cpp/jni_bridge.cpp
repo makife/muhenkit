@@ -302,6 +302,18 @@ FN(jint, addCircle)(JNIEnv* env, jobject, jlong h, jbyteArray layer, jdouble cx,
   return mk_add_circle(D(h), utf8(env, layer).c_str(), cx, cy, r);
 }
 
+FN(jint, addArc)(JNIEnv* env, jobject, jlong h, jbyteArray layer, jdouble cx, jdouble cy, jdouble r, jdouble a0, jdouble a1) {
+  return mk_add_arc(D(h), utf8(env, layer).c_str(), cx, cy, r, a0, a1);
+}
+
+FN(jbyteArray, entityProps)(JNIEnv* env, jobject, jlong h, jint id) { return bytes(env, mk_entity_props(D(h), id)); }
+
+FN(jint, setEntityProps)(JNIEnv* env, jobject, jlong h, jint id, jbyteArray kv) {
+  return mk_set_entity_props(D(h), id, utf8(env, kv).c_str());
+}
+
+FN(jint, setInsunits)(JNIEnv*, jobject, jlong h, jint u) { return mk_set_insunits(D(h), u); }
+
 FN(jint, addPolyline)(JNIEnv* env, jobject, jlong h, jbyteArray layer, jdoubleArray xy, jboolean closed) {
   jsize n = env->GetArrayLength(xy);
   std::vector<double> v(static_cast<size_t>(n));

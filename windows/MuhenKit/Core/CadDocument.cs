@@ -178,6 +178,33 @@ public sealed class CadDocument : IDisposable
 
     public int AddCircle(string layer, double cx, double cy, double r)
     { lock (_lock) return Native.mk_add_circle(H, Z(layer), cx + OriginX, cy + OriginY, r); }
+    /// <summary>Yay: a0'dan a1'e saat yönü tersine (derece)</summary>
+    public int AddArc(string layer, double cx, double cy, double r, double a0, double a1)
+    { lock (_lock) return Native.mk_add_arc(H, Z(layer), cx + OriginX, cy + OriginY, r, a0, a1); }
+
+    /// <summary>Düzenlenebilir geometri (mutlak koordinat): LINE x1 y1 x2 y2 · CIRCLE cx cy r · ARC cx cy r a0 a1; başka tür boş</summary>
+    public Dictionary<string, double> Props(int id)
+    {
+        string s;
+        lock (_lock) s = Native.Str(Native.mk_entity_props(H, id));
+        var d = new Dictionary<string, double>();
+        foreach (var line in s.Split('\n'))
+        {
+            int eq = line.IndexOf('=');
+            if (eq > 0 && double.TryParse(line[(eq + 1)..], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var v))
+                d[line[..eq]] = v;
+        }
+        return d;
+    }
+
+    public bool SetProps(int id, IReadOnlyDictionary<string, double> v)
+    {
+        var kv = string.Concat(v.Select(p => $"{p.Key}={p.Value.ToString("R", System.Globalization.CultureInfo.InvariantCulture)}\n"));
+        lock (_lock) return Native.mk_set_entity_props(H, id, Z(kv)) == 1;
+    }
+
+    /// <summary>Çizim birimi: 4 mm, 5 cm, 6 m. Sonra Rebuild.</summary>
+    public void SetUnits(int u) { lock (_lock) Native.mk_set_insunits(H, u); }
 
     public int AddPolyline(string layer, IReadOnlyList<(double X, double Y)> pts, bool closed)
     {

@@ -3,7 +3,7 @@ import CoreGraphics
 import SwiftUI
 
 enum CadTool: String, CaseIterable, Identifiable {
-    case select, move, copy, line, pline, circle, rect, offset, symbol, text, measure, rotate, scale, mirror, dimension
+    case select, move, copy, line, pline, circle, rect, offset, symbol, text, measure, rotate, scale, mirror, dimension, arc
     var id: String { rawValue }
 
     var label: String {
@@ -14,6 +14,7 @@ enum CadTool: String, CaseIterable, Identifiable {
         case .line: return "Çizgi"
         case .pline: return "Çoklu çizgi"
         case .circle: return "Daire"
+        case .arc: return "Yay"
         case .rect: return "Dikdörtgen"
         case .offset: return "Ötele"
         case .symbol: return "Sembol"
@@ -35,6 +36,7 @@ enum CadTool: String, CaseIterable, Identifiable {
         case .line: return "line.diagonal"
         case .pline: return "point.topleft.down.curvedto.point.bottomright.up"
         case .circle: return "circle"
+        case .arc: return "rainbow"
         case .rect: return "rectangle"
         case .offset: return "arrow.left.and.right.square"
         case .symbol: return "square.grid.3x3.square"
@@ -76,7 +78,17 @@ final class CadEditor: ObservableObject {
     private static let snapNames = ["", "Uç nokta", "Orta nokta", "Merkez", "Ekleme noktası"]
 
     @Published private(set) var doc: CadDocument?
-    @Published private(set) var scene: CadScene?
+    @Published private(set) var scene: CadScene? {
+        didSet { Self.unitSuffix = unitLabel.isEmpty ? "" : " " + unitLabel }
+    }
+    /// Çizim birimi etiketi (mm, cm, m; belirtilmemişse boş)
+    var unitLabel: String {
+        switch scene?.units { case 4: return "mm"; case 5: return "cm"; case 6: return "m"; case 1: return "inç"; case 2: return "ayak"; default: return "" }
+    }
+    var unitSuffixParen: String { unitLabel.isEmpty ? "" : " (\(unitLabel))" }
+    /// Canlı ölçülerde birim (statik yardımcılar da kullanır)
+    private static var unitSuffix = ""
+    private var u: String { Self.unitSuffix }
     /// Sahne her yenilendiğinde artar (tuval yeniden çizilsin)
     @Published private(set) var revision = 0
     @Published private(set) var tool: CadTool = .select
@@ -116,6 +128,7 @@ final class CadEditor: ObservableObject {
     private var pivot: Pt?
     private var scaleRef: Pt?
     private var dimP2: Pt?
+    private var arcStart: Pt?   // yay: başlangıç noktası (merkez anchor)
     private var acq: [Pt] = []
     private var acqSeg: (a: Pt, b: Pt)?
     private var lastAcq: Pt?
@@ -164,6 +177,7 @@ final class CadEditor: ObservableObject {
         case .line: return anchor == nil ? "İlk noktayı verin" : "Sonraki nokta ya da uzunluk, uzunluk<açı, @dx,dy · Bitir: Enter / sağ tık"
         case .pline: return pline.isEmpty ? "İlk noktayı verin" : "Sonraki nokta · Enter: bitir · K: kapat"
         case .circle: return anchor == nil ? "Merkezi verin" : "Yarıçap noktasını verin ya da yarıçap yazın"
+        case .arc: return anchor == nil ? "Yayın merkezini verin" : arcStart == nil ? "Başlangıç noktasını verin ya da yarıçap yazın" : "Bitiş noktasını verin ya da yay açısı yazın (ör. 67)"
         case .rect: return anchor == nil ? "İlk köşeyi verin" : "Karşı köşeyi verin ya da genişlik,yükseklik yazın"
         case .offset: return offsetTarget == nil ? "Ötelenecek nesneye dokunun · uzaklık \(Self.fmt(offsetDist))" : "Hangi tarafa? Dokunun"
         case .symbol: return "\(symbol?.name ?? ""): yerleştirmek için dokunun · açı \(Int(symbolRot))°"
@@ -213,6 +227,7 @@ final class CadEditor: ObservableObject {
         pline = []
         offsetTarget = nil
         dimP2 = nil
+        arcStart = nil
         acq = []
         acqSeg = nil
         lastAcq = nil
@@ -260,6 +275,8 @@ final class CadEditor: ObservableObject {
     // arayüz bağlamı (ipucu çubuğu düğmeleri)
     var hasPivot: Bool { pivot != nil }
     var hasAnchor: Bool { anchor != nil }
+    /// Yay adımı: 0 merkez, 1 başlangıç, 2 bitiş
+    var arcStage: Int { anchor == nil ? 0 : arcStart == nil ? 1 : 2 }
     var plineCount: Int { pline.count }
     var hasOffsetTarget: Bool { offsetTarget != nil }
     var dimStage: Int { anchor == nil ? 0 : dimP2 == nil ? 1 : 2 }
@@ -339,6 +356,25 @@ final class CadEditor: ObservableObject {
         var parts: [Int] = []
         edit({ d in parts = d.explode(ids) }, after: { [weak self] in
             if parts.isEmpty { self?.message = "Seçimde çözülecek grup ya da blok yok." } else { self?.setSelection(parts, "\(parts.count) parça") }
+        })
+    }
+
+    /// Çizim birimi (4 mm, 5 cm, 6 m); geri alınamaz
+    func setUnits(_ u: Int) { edit { $0.setUnits(u) } }
+
+    /// Tek seçili nesnenin düzenlenebilir geometrisi (mutlak koordinat); yoksa nil
+    func selectedGeometry() -> (id: Int, type: String, values: [String: Double])? {
+        guard let d = doc, selection.count == 1, let id = selection.first else { return nil }
+        let v = d.props(id)
+        if v.isEmpty { return nil }
+        return (id, d.info(id).split(separator: "|", omittingEmptySubsequences: false).first.map(String.init) ?? "", v)
+    }
+
+    /// Geometriyi değiştir (geri alınabilir); seçim korunur
+    func setGeometry(_ id: Int, _ v: [String: Double]) {
+        var ok = true
+        edit({ d in ok = d.setProps(id, v) }, after: { [weak self] in
+            if !ok { self?.message = "Değer uygulanamadı (yarıçap sıfırdan büyük olmalı)." }
         })
     }
 
@@ -641,7 +677,7 @@ final class CadEditor: ObservableObject {
 
     private var needsFirstPoint: Bool {
         switch tool {
-        case .line, .circle, .rect, .measure, .mirror, .move, .copy, .dimension: return anchor == nil
+        case .line, .circle, .arc, .rect, .measure, .mirror, .move, .copy, .dimension: return anchor == nil
         case .pline: return pline.isEmpty
         default: return false
         }
@@ -702,6 +738,15 @@ final class CadEditor: ObservableObject {
                 if r < tol * 0.05 { break }
                 anchor = nil
                 edit { $0.addCircle(layer, c.x, c.y, r) }
+            } else { anchor = p }
+        case .arc:
+            if let c = anchor {
+                if let st = arcStart {
+                    if near(c, p, tol) { break }
+                    addArc(c, dist(c, st), deg(c, st), deg(c, p))
+                } else if dist(c, p) > tol * 0.05 {
+                    arcStart = p
+                }
             } else { anchor = p }
         case .rect:
             if let r0 = anchor {
@@ -820,6 +865,44 @@ final class CadEditor: ObservableObject {
         preview((0, hover.x, hover.y), firstOverride: nil)
     }
 
+    private func deg(_ c: Pt, _ p: Pt) -> Double { atan2(p.y - c.y, p.x - c.x) * 180 / .pi }
+
+    /// Saat yönü tersine a0'dan a1'e süpürme (0–360)
+    private func sweep(_ a0: Double, _ a1: Double) -> Double {
+        let s = (a1 - a0).truncatingRemainder(dividingBy: 360)
+        return s <= 0 ? s + 360 : s
+    }
+
+    private func arcSegs(_ c: Pt, _ r: Double, _ a0: Double, _ sw: Double) -> [Float] {
+        let n = max(4, Int(abs(sw) / 3))
+        var o: [Float] = []
+        o.reserveCapacity(n * 4)
+        for i in 0..<n {
+            let t0 = (a0 + sw * Double(i) / Double(n)) * .pi / 180, t1 = (a0 + sw * Double(i + 1) / Double(n)) * .pi / 180
+            o += [Float(c.x + r * cos(t0)), Float(c.y + r * sin(t0)), Float(c.x + r * cos(t1)), Float(c.y + r * sin(t1))]
+        }
+        return o
+    }
+
+    /// Yayı ekle (a0'dan a1'e saat yönü tersine), aracı ilk adıma döndür
+    private func addArc(_ c: Pt, _ r: Double, _ a0: Double, _ a1: Double) {
+        guard r > 0 else { return }
+        let layer = activeLayer
+        anchor = nil
+        arcStart = nil
+        edit { $0.addArc(layer, c.x, c.y, r, a0, a1) }
+    }
+
+    /// Düz sayı (ondalık nokta, en çok 6 hane) — düzenleme alanları için
+    static func fmtPlain(_ v: Double) -> String {
+        let f = NumberFormatter()
+        f.locale = Locale(identifier: "en_US_POSIX")
+        f.maximumFractionDigits = 6
+        f.minimumFractionDigits = 0
+        f.usesGroupingSeparator = false
+        return f.string(from: NSNumber(value: v)) ?? "\(v)"
+    }
+
     private func near(_ a: Pt, _ b: Pt, _ tol: Double) -> Bool { abs(a.x - b.x) + abs(a.y - b.y) < tol * 0.05 }
     private func dist(_ a: Pt, _ b: Pt) -> Double { ((a.x - b.x) * (a.x - b.x) + (a.y - b.y) * (a.y - b.y)).squareRoot() }
 
@@ -836,7 +919,7 @@ final class CadEditor: ObservableObject {
         let dx = b.x - a.x, dy = b.y - a.y
         var ang = atan2(dy, dx) * 180 / .pi
         if ang < 0 { ang += 360 }
-        return "Uzunluk \(fmt((dx * dx + dy * dy).squareRoot())) · Açı \(String(format: "%.1f", ang))° · ΔX \(fmt(dx)) · ΔY \(fmt(dy))"
+        return "Uzunluk \(fmt((dx * dx + dy * dy).squareRoot()))\(unitSuffix) · Açı \(String(format: "%.1f", ang))° · ΔX \(fmt(dx)) · ΔY \(fmt(dy))"
     }
 
     // ───────────────────────── önizleme ─────────────────────────
@@ -873,13 +956,28 @@ final class CadEditor: ObservableObject {
                 }
                 o += seg(c, cur)
                 rubber = o
-                lv = "Yarıçap \(Self.fmt(r)) · Çap \(Self.fmt(2 * r))"
+                lv = "Yarıçap \(Self.fmt(r))\(u) · Çap \(Self.fmt(2 * r))\(u)"
+            }
+        case .arc:
+            if let c = a {
+                if let st = arcStart {
+                    let r = dist(c, st), a0 = deg(c, st), sw = sweep(a0, deg(c, cur))
+                    let e: Pt = (c.x + r * cos((a0 + sw) * .pi / 180), c.y + r * sin((a0 + sw) * .pi / 180))
+                    rubber = arcSegs(c, r, a0, sw) + seg(c, st) + seg(c, e)
+                    lv = "Yay açısı \(String(format: "%.1f", sw))° · Yarıçap \(Self.fmt(r))\(u) · Yay uzunluğu \(Self.fmt(r * sw * .pi / 180))\(u)"
+                } else {
+                    let r = dist(c, cur)
+                    var ang = deg(c, cur)
+                    if ang < 0 { ang += 360 }
+                    rubber = arcSegs(c, r, 0, 360) + seg(c, cur)
+                    lv = "Yarıçap \(Self.fmt(r))\(u) · Başlangıç açısı \(String(format: "%.1f", ang))°"
+                }
             }
         case .rect:
             if let r0 = a {
                 let c1: Pt = (cur.x, r0.y), c3: Pt = (r0.x, cur.y)
                 rubber = seg(r0, c1) + seg(c1, cur) + seg(cur, c3) + seg(c3, r0)
-                lv = "\(Self.fmt(abs(cur.x - r0.x))) × \(Self.fmt(abs(cur.y - r0.y)))"
+                lv = "\(Self.fmt(abs(cur.x - r0.x))) × \(Self.fmt(abs(cur.y - r0.y)))\(u)"
             }
         case .measure:
             if let m0 = a { rubber = seg(m0, cur); lv = Self.measureText(m0, cur) }
@@ -941,7 +1039,7 @@ final class CadEditor: ObservableObject {
     private func lineLive(_ a: Pt, _ b: Pt) -> String {
         var ang = atan2(b.y - a.y, b.x - a.x) * 180 / .pi
         if ang < 0 { ang += 360 }
-        return "Uzunluk \(Self.fmt(dist(a, b))) · Açı \(String(format: "%.1f", ang))°"
+        return "Uzunluk \(Self.fmt(dist(a, b)))\(u) · Açı \(String(format: "%.1f", ang))°"
     }
 
     private func setOverlay(ghost: CGAffineTransform? = nil, rubber: [Float]? = nil, snap: SnapPt? = nil, cursor: Pt? = nil,
@@ -1018,6 +1116,7 @@ final class CadEditor: ObservableObject {
     // ───────────────────────── komut satırı ─────────────────────────
 
     private static let aliases: [String: CadTool] = [
+        "A": .arc, "ARC": .arc, "YAY": .arc,
         "L": .line, "LINE": .line, "ÇİZGİ": .line, "PL": .pline, "PLINE": .pline, "C": .circle, "CIRCLE": .circle, "DAİRE": .circle,
         "REC": .rect, "RECTANG": .rect, "M": .move, "MOVE": .move, "TAŞI": .move, "CO": .copy, "CP": .copy, "COPY": .copy,
         "RO": .rotate, "ROTATE": .rotate, "SC": .scale, "SCALE": .scale, "MI": .mirror, "MIRROR": .mirror, "O": .offset, "OFFSET": .offset,
@@ -1076,6 +1175,23 @@ final class CadEditor: ObservableObject {
         case .offset: if v > 0 { offsetDist = v }; return true
         case .circle:
             if let c = anchor { if v > 0 { point((c.x + v, c.y), tol) }; return true }
+        case .arc:
+            if let c = anchor, let st = arcStart {
+                // yay açısı: başlangıçtan saat yönü tersine (eksi: saat yönünde)
+                guard v != 0, abs(v) < 360 else { return false }
+                let a0 = deg(c, st)
+                if v > 0 { addArc(c, dist(c, st), a0, a0 + v) } else { addArc(c, dist(c, st), a0 + v, a0) }
+                live = nil
+                return true
+            }
+            if let c = anchor {
+                // yarıçap: başlangıç noktası imleç yönünde
+                guard v > 0 else { return false }
+                var dx = hover.x - c.x, dy = hover.y - c.y, l = (dx * dx + dy * dy).squareRoot()
+                if l < 1e-12 { dx = 1; dy = 0; l = 1 }
+                point((c.x + dx / l * v, c.y + dy / l * v), tol)
+                return true
+            }
         case .dimension:
             if let a1 = anchor, let a2 = dimP2 {
                 let ux = a2.x - a1.x, uy = a2.y - a1.y, l = (ux * ux + uy * uy).squareRoot()

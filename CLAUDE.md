@@ -35,7 +35,7 @@ Tasarım: Android arayüzü esastır (mavi devre kartı ana sayfa, çizimde gizl
   `dotnet publish` KULLANMA (.pri/.xbf atlıyor, uygulama çöker).
 - **iOS/macOS**: yerelde derlenemez (Mac yok) → yalnızca GitHub Actions.
 
-Windows test bayrakları: `MuhenKit.exe <dxf>` · `--projeler` · `--modul=<RouteId>`; ortam `MUHENKIT_SELFTEST=1|2|3|e|ed|f1|f2|f3|demo`
+Windows test bayrakları: `MuhenKit.exe <dxf>` · `--projeler` · `--modul=<RouteId>`; ortam `MUHENKIT_SELFTEST=1|2|3|e|ea|ed|arc|f1|f2|f3|demo`
 (sonuç `%TEMP%\muhenkit_selftest.txt`, hata günlüğü `%TEMP%\muhenkit_log.txt`).
 
 ## CI (GitHub Actions, depo makife/muhenkit)

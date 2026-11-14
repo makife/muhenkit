@@ -55,6 +55,10 @@ internal object MkNative {
 
     // çizim
     external fun addCircle(doc: Long, layer: ByteArray, cx: Double, cy: Double, r: Double): Int
+    external fun addArc(doc: Long, layer: ByteArray, cx: Double, cy: Double, r: Double, a0: Double, a1: Double): Int
+    external fun entityProps(doc: Long, id: Int): ByteArray
+    external fun setEntityProps(doc: Long, id: Int, kv: ByteArray): Int
+    external fun setInsunits(doc: Long, units: Int): Int
     external fun addPolyline(doc: Long, layer: ByteArray, xy: DoubleArray, closed: Boolean): Int
     external fun offset(doc: Long, id: Int, d: Double, px: Double, py: Double): Int
 

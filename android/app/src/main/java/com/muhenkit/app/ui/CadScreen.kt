@@ -84,6 +84,8 @@ fun CadScreen(request: CadRequest?, onExit: () -> Unit = {}) {
     DisposableEffect(Unit) { onDispose { ed.dispose() } }
     var showLayers by remember { mutableStateOf(false) }
     var showProps by remember { mutableStateOf(false) }
+    var showUnits by remember { mutableStateOf(false) }
+    onUnits = { showUnits = true }
     var showSymbols by remember { mutableStateOf(false) }
     var showCounts by remember { mutableStateOf(false) }
     var showExport by remember { mutableStateOf(false) }
@@ -343,9 +345,35 @@ fun CadScreen(request: CadRequest?, onExit: () -> Unit = {}) {
         }
     }
 
+    if (showUnits && s != null) {
+        AlertDialog(
+            onDismissRequest = { showUnits = false },
+            title = { Text("Çizim birimi") },
+            text = {
+                Column {
+                    Text(
+                        "Yazdığınız uzunluk, yarıçap ve ölçüler bu birimde olur. Mevcut çizim ölçeklenmez.",
+                        style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    for ((u, name) in listOf(4 to "Milimetre (mm)", 5 to "Santimetre (cm)", 6 to "Metre (m)")) {
+                        Row(
+                            Modifier.fillMaxWidth().clickable { showUnits = false; if (s.units != u) ed.setUnits(u) }.padding(vertical = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            RadioButton(selected = s.units == u, onClick = { showUnits = false; if (s.units != u) ed.setUnits(u) })
+                            Text(name)
+                        }
+                    }
+                }
+            },
+            confirmButton = { TextButton(onClick = { showUnits = false }) { Text("Kapat") } },
+        )
+    }
+
     if (showProps && s != null) {
         ModalBottomSheet(onDismissRequest = { showProps = false }) {
-            PropsSheet(s, ed.selection.size, onLayer = {
+            PropsSheet(s, ed.selection.size, ed.selectedGeometry(), ed.unitLabel, onGeom = { id, v -> ed.setGeometry(id, v) }, onLayer = {
                 ed.applyLayer(it)
                 showProps = false
             }, onColor = {
@@ -364,7 +392,7 @@ fun CadScreen(request: CadRequest?, onExit: () -> Unit = {}) {
                 onOk = { v -> numberAsk = null; if (v > 0) ed.symbolScale = v },
             )
             CadTool.LINE, CadTool.PLINE -> NumberDialog2(
-                title = "Uzunluk ve açı", label1 = "Uzunluk", init1 = "", label2 = "Açı (derece, 0 = sağa, 90 = yukarı)",
+                title = "Uzunluk ve açı", label1 = "Uzunluk" + ed.unitLabel.let { if (it.isEmpty()) "" else " ($it)" }, init1 = "", label2 = "Açı (derece, 0 = sağa, 90 = yukarı)",
                 init2 = trimNum(ed.lastAngle), onDismiss = { numberAsk = null },
                 onOk = { a, b -> numberAsk = null; ed.numericDraw(a, b) },
             )
@@ -373,7 +401,15 @@ fun CadScreen(request: CadRequest?, onExit: () -> Unit = {}) {
                 onDismiss = { numberAsk = null }, onOk = { a, b -> numberAsk = null; ed.numericDraw(a, b) },
             )
             CadTool.CIRCLE -> NumberDialog(
-                title = "Daire", label = "Yarıçap", initial = "", onDismiss = { numberAsk = null },
+                title = "Daire", label = "Yarıçap" + ed.unitLabel.let { if (it.isEmpty()) "" else " ($it)" }, initial = "", onDismiss = { numberAsk = null },
+                onOk = { v -> numberAsk = null; ed.numericDraw(v, 0.0) },
+            )
+            CadTool.ARC -> if (ed.arcStart == null) NumberDialog2(
+                title = "Yay", label1 = "Yarıçap" + ed.unitLabel.let { if (it.isEmpty()) "" else " ($it)" }, init1 = "",
+                label2 = "Başlangıç açısı (derece, 0 = sağa)", init2 = "0", onDismiss = { numberAsk = null },
+                onOk = { a, b -> numberAsk = null; ed.numericDraw(a, b) },
+            ) else NumberDialog(
+                title = "Yay açısı", label = "Derece (saat yönünün tersi +, ör. 67)", initial = "", onDismiss = { numberAsk = null },
                 onOk = { v -> numberAsk = null; ed.numericDraw(v, 0.0) },
             )
             CadTool.OFFSET -> NumberDialog(
@@ -525,7 +561,7 @@ private fun EmptyState(error: String?, hasScene: Boolean, onOpen: () -> Unit, on
 @Composable
 private fun HintBar(ed: CadEditor, onNumber: () -> Unit, onEditText: () -> Unit, onSymbols: () -> Unit, modifier: Modifier = Modifier.fillMaxWidth()) {
     val pivotTool = ed.tool == CadTool.ROTATE || ed.tool == CadTool.SCALE
-    val drawTool = ed.tool == CadTool.LINE || ed.tool == CadTool.PLINE || ed.tool == CadTool.CIRCLE || ed.tool == CadTool.RECT
+    val drawTool = ed.tool == CadTool.LINE || ed.tool == CadTool.PLINE || ed.tool == CadTool.CIRCLE || ed.tool == CadTool.ARC || ed.tool == CadTool.RECT
     val text = when {
         pivotTool && ed.pivot != null -> ed.liveText
             ?: if (ed.tool == CadTool.ROTATE) "Bir noktadan sürükleyerek döndürün ya da açı seçin." else "Bir noktadan sürükleyerek ölçekleyin ya da çarpan seçin."
@@ -533,6 +569,7 @@ private fun HintBar(ed: CadEditor, onNumber: () -> Unit, onEditText: () -> Unit,
         ed.tool == CadTool.SELECT && ed.selectionInfo != null -> ed.selectionInfo!!
         drawTool && ed.lineStart != null -> ed.liveText ?: when (ed.tool) {
             CadTool.CIRCLE -> "Yarıçap kadar sürükleyin ya da yarıçapı girin."
+            CadTool.ARC -> if (ed.arcStart == null) "Başlangıç noktasına sürükleyin ya da yarıçapı girin." else "Bitiş noktasına dokunun ya da yay açısını girin (ör. 67)."
             CadTool.RECT -> "Karşı köşeye dokunun ya da ölçüyü girin."
             else -> "Sonraki noktaya dokunun ya da uzunluk girin."
         }
@@ -633,6 +670,8 @@ enum class ToolCat(val label: String, val icon: ImageVector) {
 
 private class ToolItem(val icon: ImageVector, val label: String, val active: Boolean, val enabled: Boolean = true, val onClick: () -> Unit)
 
+private var onUnits: () -> Unit = {}
+
 private fun toolsOf(cat: ToolCat, ed: CadEditor, onProps: () -> Unit, onSymbols: () -> Unit, onTables: () -> Unit): List<ToolItem> {
     val sel = ed.selection.isNotEmpty()
     val free = !ed.busy
@@ -641,6 +680,7 @@ private fun toolsOf(cat: ToolCat, ed: CadEditor, onProps: () -> Unit, onSymbols:
             ToolItem(Icons.Outlined.Timeline, "Çizgi", ed.tool == CadTool.LINE) { ed.selectTool(CadTool.LINE) },
             ToolItem(Icons.Outlined.Polyline, "Ç.Çizgi", ed.tool == CadTool.PLINE) { ed.selectTool(CadTool.PLINE) },
             ToolItem(Icons.Outlined.Circle, "Daire", ed.tool == CadTool.CIRCLE) { ed.selectTool(CadTool.CIRCLE) },
+            ToolItem(Icons.Outlined.Looks, "Yay", ed.tool == CadTool.ARC) { ed.selectTool(CadTool.ARC) },
             ToolItem(Icons.Outlined.CropSquare, "Dikdörtgen", ed.tool == CadTool.RECT) { ed.selectTool(CadTool.RECT) },
             ToolItem(Icons.Outlined.TextFields, "Yazı", ed.tool == CadTool.TEXT) { ed.selectTool(CadTool.TEXT) },
             ToolItem(Icons.Outlined.SquareFoot, "Ölçü", ed.tool == CadTool.DIMENSION) { ed.selectTool(CadTool.DIMENSION) },
@@ -669,6 +709,7 @@ private fun toolsOf(cat: ToolCat, ed: CadEditor, onProps: () -> Unit, onSymbols:
             ToolItem(Icons.Outlined.Explore, "Açı 15°", ed.angleSnap) { ed.angleSnap = !ed.angleSnap },
             ToolItem(Icons.Outlined.Add, "Orto", ed.ortho) { ed.ortho = !ed.ortho },
             ToolItem(Icons.Outlined.LinearScale, "İz", ed.tracking) { ed.tracking = !ed.tracking },
+            ToolItem(Icons.Outlined.Straighten, "Birim: " + ed.unitLabel.ifEmpty { "?" }, false, ed.scene != null && free) { onUnits() },
         )
     }
 }
@@ -1089,10 +1130,17 @@ private val AciColors = listOf(
 )
 
 @Composable
-private fun PropsSheet(scene: CadScene, count: Int, onLayer: (String) -> Unit, onColor: (Int) -> Unit) {
-    Column(Modifier.padding(horizontal = 16.dp).padding(bottom = 24.dp)) {
+private fun PropsSheet(
+    scene: CadScene, count: Int, geom: Triple<Int, String, Map<String, Double>>?, unit: String,
+    onGeom: (Int, Map<String, Double>) -> Unit, onLayer: (String) -> Unit, onColor: (Int) -> Unit,
+) {
+    Column(Modifier.padding(horizontal = 16.dp).padding(bottom = 24.dp).verticalScroll(rememberScrollState())) {
         Text("$count nesnenin özellikleri", style = MaterialTheme.typography.titleMedium)
         Spacer(Modifier.height(12.dp))
+        if (geom != null) {
+            GeomFields(geom, unit, onGeom)
+            Spacer(Modifier.height(16.dp))
+        }
         Text("Renk", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Spacer(Modifier.height(6.dp))
         Row(Modifier.horizontalScroll(rememberScrollState()), verticalAlignment = Alignment.CenterVertically) {
@@ -1112,8 +1160,8 @@ private fun PropsSheet(scene: CadScene, count: Int, onLayer: (String) -> Unit, o
         }
         Spacer(Modifier.height(16.dp))
         Text("Katmana taşı", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        LazyColumn(Modifier.fillMaxWidth().heightIn(max = 360.dp)) {
-            itemsIndexed(scene.layers) { _, l ->
+        Column(Modifier.fillMaxWidth()) {
+            for (l in scene.layers) {
                 Row(
                     Modifier.fillMaxWidth().clickable { onLayer(l.name) }.padding(vertical = 10.dp),
                     verticalAlignment = Alignment.CenterVertically,
@@ -1127,6 +1175,82 @@ private fun PropsSheet(scene: CadScene, count: Int, onLayer: (String) -> Unit, o
             }
         }
     }
+}
+
+/** Seçili çizgi / daire / yay geometrisi: değer yazıp "Uygula" ile değişir (geri alınabilir) */
+@Composable
+private fun GeomFields(geom: Triple<Int, String, Map<String, Double>>, unit: String, onGeom: (Int, Map<String, Double>) -> Unit) {
+    val (id, type, v) = geom
+    val uu = if (unit.isEmpty()) "" else " ($unit)"
+    fun norm(a: Double): Double { val x = a % 360.0; return if (x < 0) x + 360.0 else x }
+    // alan adı → (başlık, başlangıç değeri)
+    val fields: List<Pair<String, Pair<String, Double>>> = when (type) {
+        "LINE" -> {
+            val x1 = v.getValue("x1"); val y1 = v.getValue("y1"); val x2 = v.getValue("x2"); val y2 = v.getValue("y2")
+            listOf(
+                "len" to ("Uzunluk$uu" to kotlin.math.hypot(x2 - x1, y2 - y1)),
+                "ang" to ("Açı (°)" to norm(Math.toDegrees(kotlin.math.atan2(y2 - y1, x2 - x1)))),
+                "x1" to ("Başlangıç X" to x1), "y1" to ("Başlangıç Y" to y1),
+                "x2" to ("Bitiş X" to x2), "y2" to ("Bitiş Y" to y2),
+            )
+        }
+        else -> {
+            val base = listOf(
+                "r" to ("Yarıçap$uu" to v.getValue("r")), "d" to ("Çap$uu" to 2 * v.getValue("r")),
+                "cx" to ("Merkez X" to v.getValue("cx")), "cy" to ("Merkez Y" to v.getValue("cy")),
+            )
+            if (type == "ARC") {
+                val a0 = v.getValue("a0"); val a1 = v.getValue("a1")
+                val sw = ((a1 - a0) % 360.0).let { if (it <= 0) it + 360.0 else it }
+                base + listOf("a0" to ("Başlangıç açısı (°)" to a0), "a1" to ("Bitiş açısı (°)" to a1), "sw" to ("Yay açısı (°)" to sw))
+            } else base
+        }
+    }
+    val texts = remember(geom) { mutableStateMapOf<String, String>().apply { fields.forEach { (k, f) -> put(k, trimNum(f.second)) } } }
+    fun num(k: String) = texts[k]?.replace(',', '.')?.toDoubleOrNull()
+    val changed = fields.filter { (k, f) -> num(k)?.let { kotlin.math.abs(it - f.second) > 1e-9 } == true }.map { it.first }
+    Text(if (type == "LINE") "Çizgi" else if (type == "ARC") "Yay" else "Daire", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    Spacer(Modifier.height(6.dp))
+    for (row in fields.chunked(2)) {
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            for ((k, f) in row) {
+                OutlinedTextField(
+                    texts[k] ?: "", { texts[k] = it }, label = { Text(f.first, maxLines = 1) }, singleLine = true, isError = num(k) == null,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), modifier = Modifier.weight(1f),
+                )
+            }
+            if (row.size == 1) Spacer(Modifier.weight(1f))
+        }
+    }
+    if (type == "ARC") {
+        val r = num("r") ?: v.getValue("r")
+        val sw = num("sw") ?: 0.0
+        Text("Yay uzunluğu ${trimNum(r * Math.toRadians(sw))}${if (unit.isEmpty()) "" else " $unit"}", fontSize = 13.sp,
+            color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 4.dp))
+    }
+    if (type == "LINE") Text("Uzunluk/açı değişince başlangıç noktası sabit kalır.", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    Button(enabled = changed.isNotEmpty() && changed.all { num(it) != null }, onClick = {
+        val out = mutableMapOf<String, Double>()
+        when (type) {
+            "LINE" -> {
+                val x1 = num("x1")!!; val y1 = num("y1")!!
+                if ("len" in changed || "ang" in changed) {
+                    val l = num("len")!!; val a = Math.toRadians(num("ang")!!)
+                    out["x1"] = x1; out["y1"] = y1; out["x2"] = x1 + l * kotlin.math.cos(a); out["y2"] = y1 + l * kotlin.math.sin(a)
+                } else for (k in listOf("x1", "y1", "x2", "y2")) out[k] = num(k)!!
+            }
+            else -> {
+                out["r"] = if ("d" in changed && "r" !in changed) num("d")!! / 2 else num("r")!!
+                out["cx"] = num("cx")!!; out["cy"] = num("cy")!!
+                if (type == "ARC") {
+                    val a0 = num("a0")!!
+                    out["a0"] = a0
+                    out["a1"] = if ("sw" in changed && "a1" !in changed) a0 + num("sw")!! else num("a1")!!
+                }
+            }
+        }
+        onGeom(id, out)
+    }, modifier = Modifier.padding(top = 8.dp)) { Text("Uygula") }
 }
 
 @Composable

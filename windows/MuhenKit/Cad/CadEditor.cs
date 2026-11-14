@@ -4,7 +4,7 @@ using MuhenKit.Core;
 
 namespace MuhenKit.Cad;
 
-public enum CadTool { Select, Move, Copy, Line, PLine, Circle, Rect, Offset, Symbol, Text, Measure, Rotate, Scale, Mirror, Dimension }
+public enum CadTool { Select, Move, Copy, Line, PLine, Circle, Rect, Offset, Symbol, Text, Measure, Rotate, Scale, Mirror, Dimension, Arc }
 
 /// <summary>
 /// DXF düzenleyicisi (masaüstü): araçlar tıkla-tıkla çalışır, imleç hareketinde canlı önizleme,
@@ -21,6 +21,7 @@ public sealed class CadEditor : ICanvasInput
         [CadTool.Line] = ("Çizgi", ""),
         [CadTool.PLine] = ("Çoklu çizgi", ""),
         [CadTool.Circle] = ("Daire", ""),
+        [CadTool.Arc] = ("Yay", "◠"),
         [CadTool.Rect] = ("Dikdörtgen", ""),
         [CadTool.Offset] = ("Ötele", ""),
         [CadTool.Symbol] = ("Sembol", ""),
@@ -80,6 +81,10 @@ public sealed class CadEditor : ICanvasInput
     private (double X, double Y)? _pivot;       // döndür/ölçekle merkezi
     private (double X, double Y)? _scaleRef;    // ölçekle referans noktası
     private (double X, double Y)? _dimP2;       // ölçü: ikinci nokta
+    private (double X, double Y)? _arcStart;    // yay: başlangıç noktası (merkez _anchor)
+    /// <summary>Çizim birimi etiketi (mm, cm, m; belirtilmemişse boş) — canlı ölçülerde gösterilir</summary>
+    public static string UnitLabel { get; set; } = "";
+    private static string U => UnitLabel.Length > 0 ? " " + UnitLabel : "";
     // hizalama izleri (AutoCAD "nesne yakalama izleme"): üzerinden geçilen yakalama noktaları ve son çizgi parçası
     private readonly List<(double X, double Y)> _acq = new();
     private ((double X, double Y) A, (double X, double Y) B)? _acqSeg;
@@ -133,6 +138,9 @@ public sealed class CadEditor : ICanvasInput
         CadTool.Line => _anchor == null ? "İlk noktayı tıklayın" : "Sonraki nokta: tıklayın ya da uzunluk, uzunluk<açı, @dx,dy yazın · Enter/Esc: bitir",
         CadTool.PLine => _pline.Count == 0 ? "İlk noktayı tıklayın" : "Sonraki nokta · Enter: bitir · K yazın: kapat",
         CadTool.Circle => _anchor == null ? "Merkezi tıklayın" : "Yarıçap noktasını tıklayın ya da yarıçap yazın",
+        CadTool.Arc => _anchor == null ? "Yayın merkezini tıklayın"
+            : _arcStart == null ? "Başlangıç noktasını tıklayın ya da yarıçap yazın (yarıçap<açı da olur)"
+            : "Bitiş noktasını tıklayın ya da yay açısı yazın (ör. 67; eksi: saat yönünde)",
         CadTool.Rect => _anchor == null ? "İlk köşeyi tıklayın" : "Karşı köşeyi tıklayın ya da genişlik,yükseklik yazın",
         CadTool.Offset => _offsetTarget == null ? $"Ötelenecek nesneye tıklayın · uzaklık {Fmt(OffsetDist)} (yazarak değiştirin)" : "Hangi tarafa? Tıklayın",
         CadTool.Symbol => $"{Symbol?.Name}: yerleştirmek için tıklayın · açı {SymbolRot:0}° (R ile 90° döndürün) · Esc: bitir",
@@ -188,6 +196,7 @@ public sealed class CadEditor : ICanvasInput
         _pline.Clear();
         _offsetTarget = null;
         _dimP2 = null;
+        _arcStart = null;
         _acq.Clear();
         _acqSeg = null;
         _lastAcq = null;
@@ -323,6 +332,26 @@ public sealed class CadEditor : ICanvasInput
 
     /// <summary>Katman çizgi kalınlığı (1/100 mm, -3 varsayılan); geri alınamaz</summary>
     public void SetLayerLWeight(int layer, int lw) => Edit(d => d.SetLayerLWeight(layer, lw));
+
+    /// <summary>Çizim birimi (4 mm, 5 cm, 6 m); geri alınamaz</summary>
+    public void SetUnits(int u) => Edit(d => d.SetUnits(u));
+
+    /// <summary>Tek seçili nesnenin düzenlenebilir geometrisi (mutlak koordinat); yoksa null</summary>
+    public (int Id, string Type, Dictionary<string, double> Values)? SelectedGeometry()
+    {
+        if (Doc is not { } d || Selection.Count != 1) return null;
+        int id = Selection.First();
+        var v = d.Props(id);
+        if (v.Count == 0) return null;
+        return (id, d.Info(id).Split('|')[0], v);
+    }
+
+    /// <summary>Geometriyi değiştir (geri alınabilir); seçim korunur</summary>
+    public void SetGeometry(int id, Dictionary<string, double> v)
+    {
+        bool ok = true;
+        Edit(d => ok = d.SetProps(id, v), after: () => { if (!ok) Message?.Invoke("Değer uygulanamadı (yarıçap sıfırdan büyük olmalı)."); });
+    }
 
     /// <summary>Tek bir yazı seçiliyse (kimlik, içerik)</summary>
     public (int Id, string Text)? SelectedText()
@@ -653,7 +682,7 @@ public sealed class CadEditor : ICanvasInput
     /// <summary>Araç henüz ilk noktasını bekliyor mu (sürüklemede basılan nokta ilk nokta olur)</summary>
     private bool NeedsFirstPoint() => Tool switch
     {
-        CadTool.Line or CadTool.Circle or CadTool.Rect or CadTool.Measure or CadTool.Mirror or CadTool.Move or CadTool.Copy or CadTool.Dimension => _anchor == null,
+        CadTool.Line or CadTool.Circle or CadTool.Arc or CadTool.Rect or CadTool.Measure or CadTool.Mirror or CadTool.Move or CadTool.Copy or CadTool.Dimension => _anchor == null,
         CadTool.PLine => _pline.Count == 0,
         _ => false,
     };
@@ -731,6 +760,16 @@ public sealed class CadEditor : ICanvasInput
                     Edit(dd => dd.AddCircle(layer, c.X, c.Y, r));
                 }
                 else _anchor = p;
+                break;
+            case CadTool.Arc:
+                if (_anchor is not { } ac) _anchor = p;
+                else if (_arcStart is not { } st) { if (Dist(ac, p) > tol * 0.05) _arcStart = p; }
+                else
+                {
+                    if (Near(ac, p, tol)) break;
+                    double a0 = Deg(ac, st), a1 = Deg(ac, p);
+                    AddArc(ac, Dist(ac, st), a0, a1);
+                }
                 break;
             case CadTool.Rect:
                 if (_anchor is { } r0)
@@ -839,6 +878,36 @@ public sealed class CadEditor : ICanvasInput
         Changed?.Invoke();
     }
 
+    private static double Deg((double X, double Y) c, (double X, double Y) p) => Math.Atan2(p.Y - c.Y, p.X - c.X) * 180 / Math.PI;
+
+    /// <summary>Yayı ekle (a0'dan a1'e saat yönü tersine) ve aracı ilk adıma döndür</summary>
+    private void AddArc((double X, double Y) c, double r, double a0, double a1)
+    {
+        if (!(r > 0)) return;
+        var layer = ActiveLayer;
+        _anchor = null;
+        _arcStart = null;
+        Edit(dd => dd.AddArc(layer, c.X, c.Y, r, a0, a1));
+    }
+
+    /// <summary>Saat yönü tersine a0'dan a1'e süpürme (0–360)</summary>
+    private static double Sweep(double a0, double a1) { double s = (a1 - a0) % 360; return s <= 0 ? s + 360 : s; }
+
+    private static float[] ArcSegs((double X, double Y) c, double r, double a0, double sweep)
+    {
+        int n = Math.Max(4, (int)(Math.Abs(sweep) / 3));
+        var o = new float[n * 4];
+        for (int i = 0; i < n; i++)
+        {
+            double t0 = (a0 + sweep * i / n) * Math.PI / 180, t1 = (a0 + sweep * (i + 1) / n) * Math.PI / 180;
+            o[i * 4] = (float)(c.X + r * Math.Cos(t0));
+            o[i * 4 + 1] = (float)(c.Y + r * Math.Sin(t0));
+            o[i * 4 + 2] = (float)(c.X + r * Math.Cos(t1));
+            o[i * 4 + 3] = (float)(c.Y + r * Math.Sin(t1));
+        }
+        return o;
+    }
+
     private void DoMoveCopy(double dx, double dy)
     {
         var ids = Selection.ToList();
@@ -887,7 +956,7 @@ public sealed class CadEditor : ICanvasInput
     {
         double dx = b.X - a.X, dy = b.Y - a.Y, ang = Math.Atan2(dy, dx) * 180 / Math.PI;
         if (ang < 0) ang += 360;
-        return $"Uzunluk {Fmt(Math.Sqrt(dx * dx + dy * dy))} · Açı {ang:0.0}° · ΔX {Fmt(dx)} · ΔY {Fmt(dy)}";
+        return $"Uzunluk {Fmt(Math.Sqrt(dx * dx + dy * dy))}{U} · Açı {ang:0.0}° · ΔX {Fmt(dx)} · ΔY {Fmt(dy)}";
     }
 
     // ───────────────────────── önizleme ─────────────────────────
@@ -937,14 +1006,30 @@ public sealed class CadEditor : ICanvasInput
                     }
                     Seg(c, cur).CopyTo(o, n * 4);
                     rubber = o;
-                    live = $"Yarıçap {Fmt(r)} · Çap {Fmt(2 * r)}";
+                    live = $"Yarıçap {Fmt(r)}{U} · Çap {Fmt(2 * r)}{U}";
                     break;
                 }
+            case CadTool.Arc when a is { } ac:
+                if (_arcStart is { } st)
+                {
+                    double r = Dist(ac, st), a0 = Deg(ac, st), sw = Sweep(a0, Deg(ac, cur));
+                    var ex = (ac.X + r * Math.Cos((a0 + sw) * Math.PI / 180), ac.Y + r * Math.Sin((a0 + sw) * Math.PI / 180));
+                    rubber = [.. ArcSegs(ac, r, a0, sw), .. Seg(ac, st), .. Seg(ac, ex)];
+                    live = $"Yay açısı {sw:0.0}° · Yarıçap {Fmt(r)}{U} · Yay uzunluğu {Fmt(r * sw * Math.PI / 180)}{U}";
+                }
+                else
+                {
+                    double r = Dist(ac, cur);
+                    rubber = [.. ArcSegs(ac, r, 0, 360), .. Seg(ac, cur)];
+                    double ang = Deg(ac, cur);
+                    live = $"Yarıçap {Fmt(r)}{U} · Başlangıç açısı {(ang < 0 ? ang + 360 : ang):0.0}°";
+                }
+                break;
             case CadTool.Rect when a is { } r0:
                 {
                     (double X, double Y) c1 = (cur.X, r0.Y), c3 = (r0.X, cur.Y);
                     rubber = [.. Seg(r0, c1), .. Seg(c1, cur), .. Seg(cur, c3), .. Seg(c3, r0)];
-                    live = $"{Fmt(Math.Abs(cur.X - r0.X))} × {Fmt(Math.Abs(cur.Y - r0.Y))}";
+                    live = $"{Fmt(Math.Abs(cur.X - r0.X))} × {Fmt(Math.Abs(cur.Y - r0.Y))}{U}";
                     break;
                 }
             case CadTool.Measure when a is { } m0:
@@ -1016,7 +1101,7 @@ public sealed class CadEditor : ICanvasInput
     {
         double ang = Math.Atan2(b.Y - a.Y, b.X - a.X) * 180 / Math.PI;
         if (ang < 0) ang += 360;
-        return $"Uzunluk {Fmt(Dist(a, b))} · Açı {ang:0.0}°";
+        return $"Uzunluk {Fmt(Dist(a, b))}{U} · Açı {ang:0.0}°";
     }
 
     private static readonly string[] SnapNames = ["", "Uç nokta", "Orta nokta", "Merkez", "Ekleme noktası"];
@@ -1104,6 +1189,7 @@ public sealed class CadEditor : ICanvasInput
         ["L"] = CadTool.Line, ["LINE"] = CadTool.Line, ["ÇİZGİ"] = CadTool.Line,
         ["PL"] = CadTool.PLine, ["PLINE"] = CadTool.PLine,
         ["C"] = CadTool.Circle, ["CIRCLE"] = CadTool.Circle, ["DAİRE"] = CadTool.Circle,
+        ["A"] = CadTool.Arc, ["ARC"] = CadTool.Arc, ["YAY"] = CadTool.Arc,
         ["REC"] = CadTool.Rect, ["RECTANG"] = CadTool.Rect,
         ["M"] = CadTool.Move, ["MOVE"] = CadTool.Move, ["TAŞI"] = CadTool.Move,
         ["CO"] = CadTool.Copy, ["CP"] = CadTool.Copy, ["COPY"] = CadTool.Copy,
@@ -1181,6 +1267,25 @@ public sealed class CadEditor : ICanvasInput
             case CadTool.Scale when _pivot != null: ScaleBy(v); return true;
             case CadTool.Offset: if (v > 0) { OffsetDist = v; Changed?.Invoke(); } return true;
             case CadTool.Circle when _anchor is { } c: if (v > 0) Point((c.X + v, c.Y), tol); return true;
+            case CadTool.Arc when _anchor is { } ac && _arcStart is { } st:
+                {
+                    // yay açısı: başlangıçtan saat yönü tersine (eksi: saat yönünde)
+                    if (v == 0 || Math.Abs(v) >= 360) return false;
+                    double a0 = Deg(ac, st);
+                    if (v > 0) AddArc(ac, Dist(ac, st), a0, a0 + v); else AddArc(ac, Dist(ac, st), a0 + v, a0);
+                    Live = null;
+                    Changed?.Invoke();
+                    return true;
+                }
+            case CadTool.Arc when _anchor is { } ac:
+                {
+                    // yarıçap: başlangıç noktası imleç yönünde
+                    if (v <= 0) return false;
+                    double dx = _hover.X - ac.X, dy = _hover.Y - ac.Y, l = Math.Sqrt(dx * dx + dy * dy);
+                    if (l < 1e-12) { dx = 1; dy = 0; l = 1; }
+                    Point((ac.X + dx / l * v, ac.Y + dy / l * v), tol);
+                    return true;
+                }
             case CadTool.Dimension when _anchor is { } a1 && _dimP2 is { } a2:
                 {
                     // ölçü çizgisinin nesneye uzaklığı: imlecin olduğu tarafa

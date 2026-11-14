@@ -136,6 +136,27 @@ class CadDocument private constructor(
     fun addCircle(layer: String, cx: Double, cy: Double, r: Double) =
         MkNative.addCircle(h(), layer.toByteArray(), cx + originX, cy + originY, r)
 
+    /** Yay: [a0]'dan [a1]'e saat yönü tersine (derece) */
+    @Synchronized
+    fun addArc(layer: String, cx: Double, cy: Double, r: Double, a0: Double, a1: Double) =
+        MkNative.addArc(h(), layer.toByteArray(), cx + originX, cy + originY, r, a0, a1)
+
+    /** Düzenlenebilir geometri (mutlak koordinat): LINE x1 y1 x2 y2 · CIRCLE cx cy r · ARC cx cy r a0 a1; başka tür boş */
+    @Synchronized
+    fun props(id: Int): Map<String, Double> =
+        String(MkNative.entityProps(h(), id), Charsets.UTF_8).lines().mapNotNull { l ->
+            val eq = l.indexOf('=')
+            if (eq <= 0) null else l.substring(eq + 1).toDoubleOrNull()?.let { l.substring(0, eq) to it }
+        }.toMap()
+
+    @Synchronized
+    fun setProps(id: Int, v: Map<String, Double>): Boolean =
+        MkNative.setEntityProps(h(), id, v.entries.joinToString("") { "${it.key}=${it.value}\n" }.toByteArray()) == 1
+
+    /** Çizim birimi: 4 mm, 5 cm, 6 m. Sonra rebuild. */
+    @Synchronized
+    fun setUnits(u: Int) = MkNative.setInsunits(h(), u)
+
     /** [pts]: göreli (x,y) çiftleri */
     @Synchronized
     fun addPolyline(layer: String, pts: List<Pair<Double, Double>>, closed: Boolean): Int {

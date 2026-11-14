@@ -1,5 +1,8 @@
 // mkcad C arayüzü.
 #include <algorithm>
+#include <cmath>
+#include <cstdlib>
+#include <map>
 #include <cstdio>
 #include <exception>
 #include <memory>
@@ -96,6 +99,7 @@ MK_API int32_t mk_set_layer_lweight(MkDoc* d, int32_t i, int32_t lw) {
 }
 
 MK_API int32_t mk_insunits(MkDoc* d) {
+  if (d->doc->insunits != -2) return d->doc->insunits;
   for (const auto& sec : d->doc->sections) {
     if (sec.name != "HEADER") continue;
     const auto& t = sec.tags;
@@ -103,6 +107,25 @@ MK_API int32_t mk_insunits(MkDoc* d) {
       if (t[k].code == 9 && t[k].value == "$INSUNITS") return t[k + 1].i();
   }
   return -1;
+}
+
+MK_API int32_t mk_set_insunits(MkDoc* d, int32_t u) {
+  if (u < 0 || u > 24) return 0;
+  auto& doc = *d->doc;
+  doc.insunits = u;
+  doc.dirty = true;
+  if (doc.versionNumber() < 1015) return 1;  // $INSUNITS R2000 ile geldi
+  std::string val = std::to_string(u);
+  for (auto& sec : doc.sections) {
+    if (sec.name != "HEADER") continue;
+    auto& t = sec.tags;
+    for (size_t k = 0; k + 1 < t.size(); k++)
+      if (t[k].code == 9 && t[k].value == "$INSUNITS") { t[k + 1].value = val; return 1; }
+    t.push_back({9, "$INSUNITS"});
+    t.push_back({70, val});
+    return 1;
+  }
+  return 1;
 }
 
 MK_API int32_t mk_build_scene(MkDoc* d) {
@@ -150,6 +173,12 @@ std::string fmtNum(double v) {
   char buf[40];
   std::snprintf(buf, sizeof(buf), "%.12g", v);
   return buf;
+}
+
+double normDeg(double a) {
+  a = std::fmod(a, 360.0);
+  if (a < 0) a += 360.0;
+  return a;
 }
 
 bool validId(MkDoc* d, int32_t id) { return id >= 0 && id < static_cast<int32_t>(d->doc->entities.size()); }
@@ -412,6 +441,94 @@ MK_API int32_t mk_add_circle(MkDoc* d, const char* layer, double cx, double cy, 
   e.tags = header(doc, layer, "AcDbCircle");
   e.tags.insert(e.tags.end(), {{10, fmtNum(cx)}, {20, fmtNum(cy)}, {30, "0.0"}, {40, fmtNum(r)}});
   return append(doc, std::move(e));
+}
+
+MK_API int32_t mk_add_arc(MkDoc* d, const char* layer, double cx, double cy, double r, double a0, double a1) {
+  if (!(r > 0) || !std::isfinite(a0) || !std::isfinite(a1)) return -1;
+  auto& doc = *d->doc;
+  mk::Entity e;
+  e.type = "ARC";
+  e.tags = header(doc, layer, "AcDbCircle");
+  e.tags.insert(e.tags.end(), {{10, fmtNum(cx)}, {20, fmtNum(cy)}, {30, "0.0"}, {40, fmtNum(r)}});
+  if (doc.versionNumber() >= 1012) e.tags.push_back({100, "AcDbArc"});
+  e.tags.insert(e.tags.end(), {{50, fmtNum(normDeg(a0))}, {51, fmtNum(normDeg(a1))}});
+  return append(doc, std::move(e));
+}
+
+MK_API const char* mk_entity_props(MkDoc* d, int32_t id) {
+  static thread_local std::string out;
+  out.clear();
+  if (!validId(d, id)) return out.c_str();
+  const auto& e = d->doc->entities[id];
+  if (e.deleted) return out.c_str();
+  auto kv = [](const char* k, double v) { return std::string(k) + "=" + fmtNum(v) + "\n"; };
+  // OCS Z = -1 (aynalı) yay/daire: dünya X'i ters
+  double sx = e.flipped() ? -1 : 1;
+  if (e.type == "LINE") {
+    out = kv("x1", e.f(10)) + kv("y1", e.f(20)) + kv("x2", e.f(11)) + kv("y2", e.f(21));
+  } else if (e.type == "CIRCLE") {
+    out = kv("cx", sx * e.f(10)) + kv("cy", e.f(20)) + kv("r", e.f(40));
+  } else if (e.type == "ARC") {
+    double a0 = e.f(50), a1 = e.f(51);
+    if (sx < 0) { double t = normDeg(180 - a1); a1 = normDeg(180 - a0); a0 = t; }
+    out = kv("cx", sx * e.f(10)) + kv("cy", e.f(20)) + kv("r", e.f(40)) + kv("a0", a0) + kv("a1", a1);
+  }
+  return out.c_str();
+}
+
+MK_API int32_t mk_set_entity_props(MkDoc* d, int32_t id, const char* text) {
+  if (!validId(d, id) || !text) return 0;
+  auto& doc = *d->doc;
+  mk::Entity e = doc.entities[id];
+  if (e.deleted) return 0;
+  std::map<std::string, double> v;
+  std::string src(text);
+  size_t pos = 0;
+  while (pos < src.size()) {
+    size_t nl = src.find('\n', pos);
+    if (nl == std::string::npos) nl = src.size();
+    std::string line = src.substr(pos, nl - pos);
+    pos = nl + 1;
+    size_t eq = line.find('=');
+    if (eq == std::string::npos) continue;
+    char* end = nullptr;
+    std::string num = line.substr(eq + 1);
+    for (auto& c : num) if (c == ',') c = '.';
+    double x = std::strtod(num.c_str(), &end);
+    if (end == num.c_str() || !std::isfinite(x)) return 0;
+    v[line.substr(0, eq)] = x;
+  }
+  auto get = [&](const char* k, double def) { auto it = v.find(k); return it == v.end() ? def : it->second; };
+  auto set = [&](int code, double x) {
+    if (auto* t = e.findMut(code)) t->value = fmtNum(x);
+    else return false;
+    return true;
+  };
+  double sx = e.flipped() ? -1 : 1;
+  bool ok = true;
+  if (e.type == "LINE") {
+    ok = set(10, get("x1", e.f(10))) && set(20, get("y1", e.f(20))) && set(11, get("x2", e.f(11))) && set(21, get("y2", e.f(21)));
+  } else if (e.type == "CIRCLE" || e.type == "ARC") {
+    double r = get("r", e.f(40));
+    if (!(r > 0)) return 0;
+    ok = set(10, sx * get("cx", sx * e.f(10))) && set(20, get("cy", e.f(20))) && set(40, r);
+    if (ok && e.type == "ARC") {
+      double a0 = e.f(50), a1 = e.f(51);
+      if (sx < 0) { double t = normDeg(180 - a1); a1 = normDeg(180 - a0); a0 = t; }
+      a0 = normDeg(get("a0", a0));
+      a1 = normDeg(get("a1", a1));
+      if (sx < 0) { double t = normDeg(180 - a1); a1 = normDeg(180 - a0); a0 = t; }
+      ok = set(50, a0) && set(51, a1);
+    }
+  } else {
+    return 0;
+  }
+  if (!ok) return 0;
+  mk::beginOp(doc);
+  mk::touch(doc, id);
+  doc.entities[id] = std::move(e);
+  mk::commitOp(doc);
+  return 1;
 }
 
 MK_API int32_t mk_add_polyline(MkDoc* d, const char* layer, const double* xy, int32_t n, int32_t closed) {

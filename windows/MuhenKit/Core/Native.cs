@@ -56,6 +56,10 @@ internal static partial class Native
     [LibraryImport(Dll)] public static partial int mk_layer_lweight(nint doc, int i);
     [LibraryImport(Dll)] public static partial int mk_set_layer_lweight(nint doc, int i, int lweight);
     [LibraryImport(Dll)] public static partial int mk_insunits(nint doc);
+    [LibraryImport(Dll)] public static partial int mk_set_insunits(nint doc, int units);
+    [LibraryImport(Dll)] public static partial int mk_add_arc(nint doc, byte[] layer, double cx, double cy, double r, double a0, double a1);
+    [LibraryImport(Dll)] public static partial nint mk_entity_props(nint doc, int id);
+    [LibraryImport(Dll)] public static partial int mk_set_entity_props(nint doc, int id, byte[] kv);
     [LibraryImport(Dll)] public static partial nint mk_seg_owners(nint doc);
     [LibraryImport(Dll)] public static partial nint mk_poly_owners(nint doc);
     [LibraryImport(Dll)] public static partial nint mk_text_owners(nint doc);

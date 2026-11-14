@@ -82,6 +82,7 @@ struct Document {
   uint64_t loadedMaxHandle = 0;  // yeni handle verilmediyse $HANDSEED aynen kalır
   std::string modelOwner;  // model alanı BLOCK_RECORD handle'ı (330)
   bool dirty = false;
+  int insunits = -2;  // mk_set_insunits ile ayarlanan birim (-2: dosyadaki geçerli)
 
   // geri al / yinele
   std::vector<Operation> undo, redo;

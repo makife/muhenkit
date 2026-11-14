@@ -116,6 +116,7 @@ public sealed partial class CadPage : Page
                 T(CadTool.Line, "L");
                 T(CadTool.PLine, "PL");
                 T(CadTool.Circle, "C");
+                T(CadTool.Arc, "A — merkez, başlangıç, bitiş (ya da açı yazın)");
                 T(CadTool.Rect, "REC");
                 T(CadTool.Text, "T");
                 Sep();
@@ -160,7 +161,7 @@ public sealed partial class CadPage : Page
         CadTool[][] groups =
         [
             [CadTool.Select, CadTool.Move, CadTool.Copy, CadTool.Rotate, CadTool.Scale, CadTool.Mirror, CadTool.Offset],
-            [CadTool.Line, CadTool.PLine, CadTool.Circle, CadTool.Rect, CadTool.Text, CadTool.Symbol, CadTool.Dimension, CadTool.Measure],
+            [CadTool.Line, CadTool.PLine, CadTool.Circle, CadTool.Arc, CadTool.Rect, CadTool.Text, CadTool.Symbol, CadTool.Dimension, CadTool.Measure],
         ];
         foreach (var g in groups)
         {
@@ -220,6 +221,11 @@ public sealed partial class CadPage : Page
             var layers = _ed.Selection.Take(200).Select(id => _doc.Info(id).Split('|') is var p && p.Length > 1 ? p[1] : "").Distinct().ToList();
             SelLayer.SelectedItem = layers.Count == 1 ? layers[0] : null;
         }
+        int units = _doc?.Scene.Units ?? -1;
+        UnitBox.SelectedIndex = units switch { 4 => 0, 5 => 1, 6 => 2, _ => -1 };
+        UnitBox.PlaceholderText = units switch { 1 => "inç (dosyada)", 2 => "ayak (dosyada)", _ => "Belirtilmemiş — seçin" };
+        CadEditor.UnitLabel = UnitName(units);
+        SyncGeomEdit();
         TextHeightBox.Value = _ed.TextHeight;
         OffsetBox.Value = _ed.OffsetDist;
         SymScaleBox.Value = _ed.SymbolScale;
@@ -395,7 +401,10 @@ public sealed partial class CadPage : Page
             {
                 var (m, bytes) = source();
                 var d = CadDocument.Open(m.Name, bytes);
-                if (m.DirtyToSource) d.SetDirty(true);
+                bool dirty = m.DirtyToSource;
+                // eski DXF sürümünde birim dosyada tutulamıyor: proje bilgisinden geri yükle
+                if (m.Units is 4 or 5 or 6 && d.Scene.Units != m.Units) { d.SetUnits(m.Units); d.Rebuild(); }
+                d.SetDirty(dirty);
                 return (m, d);
             });
             _doc = doc;
@@ -430,6 +439,7 @@ public sealed partial class CadPage : Page
             if (Environment.GetEnvironmentVariable("MUHENKIT_SELFTEST") == "demo") _ = MakeDemo();
             if (Environment.GetEnvironmentVariable("MUHENKIT_SELFTEST") == "e") _ = SelfTestExport();
             if (Environment.GetEnvironmentVariable("MUHENKIT_SELFTEST") == "ea") _ = SelfTestTitleExport();
+            if (Environment.GetEnvironmentVariable("MUHENKIT_SELFTEST") == "arc") _ = SelfTestArc();
             if (Environment.GetEnvironmentVariable("MUHENKIT_SELFTEST") == "ed") OnExport();
             if (Environment.GetEnvironmentVariable("MUHENKIT_SELFTEST") is ['f', var fk]) AddTable((TableForms.Kind)(fk - '1'));
         }
@@ -477,7 +487,7 @@ public sealed partial class CadPage : Page
             try
             {
                 if (edits > 0) ProjectStore.WriteDrawing(m.Id, d.SaveCopy());
-                var nm = m with { Modified = edits > 0 ? ProjectStore.Now : m.Modified, DirtyToSource = d.Dirty, View = view, Hidden = hidden };
+                var nm = m with { Modified = edits > 0 ? ProjectStore.Now : m.Modified, DirtyToSource = d.Dirty, View = view, Hidden = hidden, Units = s.Units };
                 ProjectStore.SaveMeta(nm);
                 if (edits > 0 || !File.Exists(ProjectStore.Thumb(m.Id))) ProjectStore.WriteThumb(m.Id, ScenePainter.RenderPng(s, hidden, 480, 300));
             }
@@ -584,6 +594,105 @@ public sealed partial class CadPage : Page
     {
         if (_syncing || SelLayer.SelectedItem is not string l) return;
         _ed.ApplyLayer(l);
+    }
+
+    private static string UnitName(int u) => u switch { 4 => "mm", 5 => "cm", 6 => "m", 1 => "inç", 2 => "ayak", _ => "" };
+
+    private void OnUnit(object sender, SelectionChangedEventArgs e)
+    {
+        if (_syncing || _doc == null || UnitBox.SelectedIndex < 0) return;
+        int u = UnitBox.SelectedIndex switch { 0 => 4, 1 => 5, _ => 6 };
+        if (u == _doc.Scene.Units) return;
+        _metaChanged = true;
+        _ed.SetUnits(u);
+        ShowMessage($"Çizim birimi: {UnitName(u)}. Girdiğiniz uzunluklar bu birimdedir; mevcut çizim ölçeklenmez.");
+    }
+
+    // ── seçili nesnenin geometrisi (çizgi / daire / yay) ──
+
+    private (int Id, string Type, string Sig)? _geomFor;
+
+    private void SyncGeomEdit()
+    {
+        var g = _ed.SelectedGeometry();
+        if (g is not { } geo || _doc == null)
+        {
+            GeomEdit.Visibility = Visibility.Collapsed;
+            GeomEdit.Children.Clear();
+            _geomFor = null;
+            return;
+        }
+        var v = geo.Values;
+        var inv = System.Globalization.CultureInfo.InvariantCulture;
+        string sig = CadEditor.UnitLabel + ";" + string.Join(";", v.Select(p => p.Key + p.Value.ToString("R", inv)));
+        if (_geomFor is { } f && f.Id == geo.Id && f.Sig == sig) return;
+        _geomFor = (geo.Id, geo.Type, sig);
+        GeomEdit.Children.Clear();
+        GeomEdit.Visibility = Visibility.Visible;
+        string u = CadEditor.UnitLabel.Length > 0 ? $" ({CadEditor.UnitLabel})" : "";
+        int id = geo.Id;
+        static double Norm(double a) { a %= 360; return a < 0 ? a + 360 : a; }
+
+        void Box(string header, double value, Func<double, Dictionary<string, double>?> apply, double min = double.NaN)
+        {
+            var nb = new NumberBox
+            {
+                Header = header, Value = Math.Round(value, 6), SpinButtonPlacementMode = NumberBoxSpinButtonPlacementMode.Hidden,
+                HorizontalAlignment = HorizontalAlignment.Stretch, Minimum = double.IsNaN(min) ? double.MinValue : min,
+                NumberFormatter = new Windows.Globalization.NumberFormatting.DecimalFormatter { FractionDigits = 0, IsDecimalPointAlwaysDisplayed = false, NumberRounder = new Windows.Globalization.NumberFormatting.IncrementNumberRounder { Increment = 0.0001 } },
+            };
+            nb.ValueChanged += (_, e) =>
+            {
+                if (double.IsNaN(e.NewValue) || Math.Abs(e.NewValue - e.OldValue) < 1e-12) return;
+                if (apply(e.NewValue) is { } nv) _ed.SetGeometry(id, nv);
+            };
+            GeomEdit.Children.Add(nb);
+        }
+        void Pair(string h1, double v1, Func<double, Dictionary<string, double>?> a1, string h2, double v2, Func<double, Dictionary<string, double>?> a2)
+        {
+            var grid = new Grid { ColumnSpacing = 8 };
+            grid.ColumnDefinitions.Add(new ColumnDefinition());
+            grid.ColumnDefinitions.Add(new ColumnDefinition());
+            int before = GeomEdit.Children.Count;
+            Box(h1, v1, a1);
+            Box(h2, v2, a2);
+            var b1 = GeomEdit.Children[before];
+            var b2 = GeomEdit.Children[before + 1];
+            GeomEdit.Children.RemoveAt(before + 1);
+            GeomEdit.Children.RemoveAt(before);
+            Grid.SetColumn((FrameworkElement)b2, 1);
+            grid.Children.Add(b1);
+            grid.Children.Add(b2);
+            GeomEdit.Children.Add(grid);
+        }
+        Dictionary<string, double> One(string k, double x) => new() { [k] = x };
+        var title = new TextBlock { Text = "Geometri", Style = (Style)Resources["PanelHeader"] };
+        GeomEdit.Children.Add(title);
+
+        if (geo.Type == "LINE")
+        {
+            double x1 = v["x1"], y1 = v["y1"], x2 = v["x2"], y2 = v["y2"];
+            double len = Math.Sqrt((x2 - x1) * (x2 - x1) + (y2 - y1) * (y2 - y1)), ang = Norm(Math.Atan2(y2 - y1, x2 - x1) * 180 / Math.PI);
+            Pair($"Uzunluk{u}", len, L => L > 0 ? new() { ["x2"] = x1 + L * Math.Cos(ang * Math.PI / 180), ["y2"] = y1 + L * Math.Sin(ang * Math.PI / 180) } : null,
+                 "Açı (°)", ang, A => new() { ["x2"] = x1 + len * Math.Cos(A * Math.PI / 180), ["y2"] = y1 + len * Math.Sin(A * Math.PI / 180) });
+            Pair("Başlangıç X", x1, x => One("x1", x), "Başlangıç Y", y1, y => One("y1", y));
+            Pair("Bitiş X", x2, x => One("x2", x), "Bitiş Y", y2, y => One("y2", y));
+            GeomEdit.Children.Add(new TextBlock { Text = "Uzunluk/açı değişince başlangıç noktası sabit kalır.", FontSize = 12, Foreground = new SolidColorBrush(Color.FromArgb(255, 0x7F, 0x93, 0xB3)), TextWrapping = TextWrapping.Wrap });
+        }
+        else
+        {
+            double cx = v["cx"], cy = v["cy"], r = v["r"];
+            Pair($"Yarıçap{u}", r, R => R > 0 ? One("r", R) : null, $"Çap{u}", 2 * r, D => D > 0 ? One("r", D / 2) : null);
+            Pair("Merkez X", cx, x => One("cx", x), "Merkez Y", cy, y => One("cy", y));
+            if (geo.Type == "ARC")
+            {
+                double a0 = v["a0"], a1 = v["a1"], sw = (a1 - a0) % 360;
+                if (sw <= 0) sw += 360;
+                Pair("Başlangıç açısı (°)", a0, A => One("a0", A), "Bitiş açısı (°)", a1, A => One("a1", A));
+                Box("Yay açısı (°)", sw, S => S > 0 && S < 360 ? One("a1", a0 + S) : null, 0);
+                GeomEdit.Children.Add(new TextBlock { Text = $"Yay uzunluğu {CadEditor.Fmt(r * sw * Math.PI / 180)}{(u.Length > 0 ? " " + CadEditor.UnitLabel : "")}", Foreground = new SolidColorBrush(Color.FromArgb(255, 0x9F, 0xB6, 0xDC)) });
+            }
+        }
     }
 
     private void OnActiveLayer(object sender, SelectionChangedEventArgs e)
@@ -1136,6 +1245,44 @@ public sealed partial class CadPage : Page
         App.Log($"antet öz-testi: kimlik {_doc.Scene.TitleBlock}, araç {_ed.Tool}, nesne {_doc.Scene.EntityCount}");
         _ed.Escape();
         await SelfTestExport();
+    }
+
+    /// <summary>MUHENKIT_SELFTEST=arc: komut satırıyla yay (A, merkez, 25&lt;30, 67), seçip özelliklerden yarıçap/açı değiştir, birim m</summary>
+    private async Task SelfTestArc()
+    {
+        var log = new System.Text.StringBuilder();
+        async Task Idle() { await Task.Delay(50); while (_ed.Busy) await Task.Delay(20); await Task.Delay(50); }
+        try
+        {
+            await Task.Delay(500);
+            var d = _doc!;
+            double cx = d.OriginX, cy = d.OriginY, tol = Canvas.Tolerance;
+            int before = d.Scene.EntityCount;
+            foreach (var c in new[] { "A", $"{cx.ToString(System.Globalization.CultureInfo.InvariantCulture)};{cy.ToString(System.Globalization.CultureInfo.InvariantCulture)}", "25<30", "67" })
+                log.AppendLine($"komut {c}: {_ed.Command(c)} · {_ed.Hint}");
+            await Idle();
+            log.AppendLine($"nesne {before} → {d.Scene.EntityCount}");
+            // yayın ortasına tıklayıp seç
+            double mid = (30 + 33.5) * Math.PI / 180, px = 25 * Math.Cos(mid), py = 25 * Math.Sin(mid);
+            _ed.SelectTool(CadTool.Select);
+            _ed.Move(px, py, tol, false); _ed.Press(px, py, tol, false); _ed.Release(px, py, tol);
+            await Idle();
+            if (_ed.SelectedGeometry() is { } g)
+            {
+                log.AppendLine($"seçili {g.Type}: " + string.Join(" ", g.Values.Select(p => $"{p.Key}={p.Value - (p.Key == "cx" ? cx : p.Key == "cy" ? cy : 0):0.###}")));
+                _ed.SetGeometry(g.Id, new() { ["r"] = 40, ["a1"] = 30 + 90 });
+                await Idle();
+                var v = d.Props(g.Id);
+                log.AppendLine($"değişti: r={v["r"]:0.###} a0={v["a0"]:0.###} a1={v["a1"]:0.###} · panel {GeomEdit.Children.Count} öğe");
+            }
+            else log.AppendLine("HATA: yay seçilemedi · " + _ed.SelectionInfo);
+            _ed.Undo(); await Idle();
+            log.AppendLine("geri al: r=" + (_ed.SelectedGeometry()?.Values["r"].ToString("0.###") ?? "seçim yok"));
+            _ed.SetUnits(6); await Idle();
+            log.AppendLine($"birim {d.Scene.Units} · kutu {UnitBox.SelectedItem} · etiket {CadEditor.UnitLabel}");
+        }
+        catch (Exception ex) { log.AppendLine("HATA " + ex); }
+        await File.WriteAllTextAsync(Path.Combine(Path.GetTempPath(), "muhenkit_selftest.txt"), log.ToString());
     }
 
     /// <summary>MUHENKIT_SELFTEST=3: üç proje tablosunu örnek verilerle üretip yan yana yerleştirir</summary>

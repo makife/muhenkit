@@ -256,6 +256,34 @@ final class CadDocument {
         locked { h.map { Int(mk_add_circle($0, layer, cx + originX, cy + originY, r)) } ?? -1 }
     }
 
+    /// Yay: a0'dan a1'e saat yönü tersine (derece)
+    @discardableResult
+    func addArc(_ layer: String, _ cx: Double, _ cy: Double, _ r: Double, _ a0: Double, _ a1: Double) -> Int {
+        locked { h.map { Int(mk_add_arc($0, layer, cx + originX, cy + originY, r, a0, a1)) } ?? -1 }
+    }
+
+    /// Düzenlenebilir geometri (mutlak koordinat): LINE x1 y1 x2 y2 · CIRCLE cx cy r · ARC cx cy r a0 a1; başka tür boş
+    func props(_ id: Int) -> [String: Double] {
+        let s: String = locked { h.flatMap { mk_entity_props($0, Int32(id)) }.map { String(cString: $0) } ?? "" }
+        var out: [String: Double] = [:]
+        for line in s.split(separator: "\n") {
+            let kv = line.split(separator: "=", maxSplits: 1).map(String.init)
+            if kv.count == 2, let v = Double(kv[1]) { out[kv[0]] = v }
+        }
+        return out
+    }
+
+    @discardableResult
+    func setProps(_ id: Int, _ v: [String: Double]) -> Bool {
+        let kv = v.map { "\($0.key)=\($0.value)\n" }.joined()
+        return locked { h.map { mk_set_entity_props($0, Int32(id), kv) == 1 } ?? false }
+    }
+
+    /// Çizim birimi: 4 mm, 5 cm, 6 m. Sonra rebuild.
+    func setUnits(_ u: Int) {
+        locked { if let h { _ = mk_set_insunits(h, Int32(u)) } }
+    }
+
     @discardableResult
     func addPolyline(_ layer: String, _ pts: [(Double, Double)], closed: Bool) -> Int {
         locked {

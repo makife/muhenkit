@@ -35,6 +35,7 @@ enum class CadTool(val label: String, val hint: String) {
     LINE("Çizgi", "İlk noktaya dokunun ya da basıp sürükleyin. Çizgiler zincir hâlinde devam eder."),
     PLINE("Ç.Çizgi", "Noktalara sırayla dokunun. Bitince Bitir ya da Kapat'a basın."),
     CIRCLE("Daire", "Merkeze dokunun, yarıçap kadar sürükleyip bırakın."),
+    ARC("Yay", "Merkeze dokunun, başlangıç noktasına sürükleyin, sonra bitiş noktasına dokunun."),
     RECT("Dikdörtgen", "Bir köşeye basın, karşı köşeye sürükleyip bırakın."),
     OFFSET("Ötele", "Ötelenecek nesneye dokunun."),
     SYMBOL("Sembol", "Yerleştirmek için dokunun ya da basıp sürükleyin."),
@@ -187,7 +188,12 @@ class CadEditor(private val context: Context, private val scope: CoroutineScope)
                 val (m, bytes) = source()
                 val (d, a, mesh) = withContext(Dispatchers.Default) {
                     val d = CadDocument.open(m.name + ".dxf", bytes)
-                    if (m.dirtyToSource) d.setDirty(true)
+                    // eski DXF sürümünde birim dosyada tutulamıyor: proje bilgisinden geri yükle
+                    if (m.units in listOf(4, 5, 6) && d.scene.units != m.units) {
+                        d.setUnits(m.units)
+                        d.rebuild()
+                    }
+                    d.setDirty(m.dirtyToSource)
                     val a = GlyphAtlas.build(d.scene.texts)
                     Triple(d, a, a?.let { TextMesh.build(d.scene.texts, it, CadRenderer::adapt) })
                 }
@@ -261,7 +267,7 @@ class CadEditor(private val context: Context, private val scope: CoroutineScope)
                 if (edits > 0) ProjectStore.writeDrawing(ctx, m.id, d.saveCopy())
                 val nm = m.copy(
                     modified = if (edits > 0) System.currentTimeMillis() else m.modified,
-                    dirtyToSource = d.dirty, view = view, hidden = hid,
+                    dirtyToSource = d.dirty, view = view, hidden = hid, units = s?.units ?: m.units,
                 )
                 ProjectStore.saveMeta(ctx, nm)
                 if (s != null && (edits > 0 || !ProjectStore.thumb(ctx, m.id).exists())) ProjectStore.writeThumb(ctx, m.id, s, hid)
@@ -325,6 +331,7 @@ class CadEditor(private val context: Context, private val scope: CoroutineScope)
         glView?.hideLoupe()
         tool = t
         lineStart = null
+        arcStart = null
         plinePts = emptyList()
         offsetTarget = null
         measureText = null
@@ -357,6 +364,7 @@ class CadEditor(private val context: Context, private val scope: CoroutineScope)
     fun finishLine() {
         if (tool == CadTool.PLINE) return finishPolyline(false)
         lineStart = null
+        arcStart = null
         liveText = null
         overlay()
     }
@@ -418,6 +426,32 @@ class CadEditor(private val context: Context, private val scope: CoroutineScope)
 
     /** Katman çizgi kalınlığı (1/100 mm, -3 varsayılan); geri alınamaz */
     fun setLayerLweight(layer: Int, lw: Int) = edit { it.setLayerLweight(layer, lw) }
+
+    /** Çizim birimi (4 mm, 5 cm, 6 m); geri alınamaz */
+    fun setUnits(u: Int) {
+        metaChanged = true
+        edit { it.setUnits(u) }
+    }
+
+    /** Birim etiketi (mm, cm, m; belirtilmemişse boş) */
+    val unitLabel: String
+        get() = when (scene?.units) { 4 -> "mm"; 5 -> "cm"; 6 -> "m"; 1 -> "inç"; 2 -> "ayak"; else -> "" }
+    private val u: String get() = unitLabel.let { if (it.isEmpty()) "" else " $it" }
+
+    /** Tek seçili nesnenin düzenlenebilir geometrisi (mutlak koordinat): (kimlik, tür, değerler); yoksa null */
+    fun selectedGeometry(): Triple<Int, String, Map<String, Double>>? {
+        val d = doc ?: return null
+        val id = selection.singleOrNull() ?: return null
+        val v = d.props(id)
+        if (v.isEmpty()) return null
+        return Triple(id, d.info(id).substringBefore('|'), v)
+    }
+
+    /** Geometriyi değiştir (geri alınabilir); seçim korunur */
+    fun setGeometry(id: Int, v: Map<String, Double>) {
+        var ok = true
+        edit(onDone = { if (!ok) message = "Değer uygulanamadı (yarıçap sıfırdan büyük olmalı)." }) { ok = it.setProps(id, v) }
+    }
 
     fun startSymbol(s: CadSymbol) {
         selectTool(CadTool.SYMBOL)
@@ -846,7 +880,7 @@ class CadEditor(private val context: Context, private val scope: CoroutineScope)
         val len = kotlin.math.hypot(dx, dy)
         var ang = Math.toDegrees(kotlin.math.atan2(dy, dx))
         if (ang < 0) ang += 360.0
-        measureText = "Uzunluk ${fmt(len)} · Açı ${"%.1f".format(ang)}° · ΔX ${fmt(dx)} · ΔY ${fmt(dy)}"
+        measureText = "Uzunluk ${fmt(len)}$u · Açı ${"%.1f".format(ang)}° · ΔX ${fmt(dx)} · ΔY ${fmt(dy)}"
     }
 
     private fun fmt(v: Double): String = "%.3f".format(v).trimEnd('0').trimEnd('.', ',')
@@ -855,7 +889,38 @@ class CadEditor(private val context: Context, private val scope: CoroutineScope)
     /** Bu basış ilk noktayı (çapa) koydu mu: dokunup bırakınca ikinci noktayı bekleriz */
     private var pressSetAnchor = false
 
-    private val drawTools = setOf(CadTool.LINE, CadTool.PLINE, CadTool.CIRCLE, CadTool.RECT)
+    private val drawTools = setOf(CadTool.LINE, CadTool.PLINE, CadTool.CIRCLE, CadTool.ARC, CadTool.RECT)
+
+    /** Yay: başlangıç noktası (merkez [lineStart]) */
+    var arcStart by mutableStateOf<Pair<Double, Double>?>(null); private set
+
+    private fun deg(c: Pair<Double, Double>, p: Pair<Double, Double>) = Math.toDegrees(kotlin.math.atan2(p.second - c.second, p.first - c.first))
+
+    /** Saat yönü tersine a0'dan a1'e süpürme (0–360) */
+    private fun sweep(a0: Double, a1: Double): Double { val s = (a1 - a0) % 360.0; return if (s <= 0) s + 360.0 else s }
+
+    private fun arcSegs(c: Pair<Double, Double>, r: Double, a0: Double, sw: Double): FloatArray {
+        val n = maxOf(4, (abs(sw) / 3).toInt())
+        val o = FloatArray(n * 4)
+        for (i in 0 until n) {
+            val t0 = Math.toRadians(a0 + sw * i / n)
+            val t1 = Math.toRadians(a0 + sw * (i + 1) / n)
+            o[i * 4] = (c.first + r * kotlin.math.cos(t0)).toFloat()
+            o[i * 4 + 1] = (c.second + r * kotlin.math.sin(t0)).toFloat()
+            o[i * 4 + 2] = (c.first + r * kotlin.math.cos(t1)).toFloat()
+            o[i * 4 + 3] = (c.second + r * kotlin.math.sin(t1)).toFloat()
+        }
+        return o
+    }
+
+    private fun addArc(c: Pair<Double, Double>, r: Double, a0: Double, a1: Double) {
+        if (r <= 0) return
+        val layer = activeLayer
+        lineStart = null
+        arcStart = null
+        liveText = null
+        edit { it.addArc(layer, c.first, c.second, r, a0, a1) }
+    }
 
     private fun seg(a: Pair<Double, Double>, b: Pair<Double, Double>) =
         floatArrayOf(a.first.toFloat(), a.second.toFloat(), b.first.toFloat(), b.second.toFloat())
@@ -867,7 +932,7 @@ class CadEditor(private val context: Context, private val scope: CoroutineScope)
         return when (tool) {
             CadTool.CIRCLE -> {
                 val r = kotlin.math.hypot(dx, dy)
-                liveText = "Yarıçap ${fmt(r)} · Çap ${fmt(2 * r)}"
+                liveText = "Yarıçap ${fmt(r)}$u · Çap ${fmt(2 * r)}$u"
                 val n = 72
                 val out = FloatArray(n * 4 + 4)
                 for (i in 0 until n) {
@@ -882,8 +947,25 @@ class CadEditor(private val context: Context, private val scope: CoroutineScope)
                 seg(a, b).copyInto(out, n * 4)
                 out
             }
+            CadTool.ARC -> {
+                val st = arcStart
+                if (st == null) {
+                    val r = kotlin.math.hypot(dx, dy)
+                    var ang = deg(a, b)
+                    if (ang < 0) ang += 360.0
+                    liveText = "Yarıçap ${fmt(r)}$u · Başlangıç açısı ${"%.1f".format(ang)}°"
+                    arcSegs(a, r, 0.0, 360.0) + seg(a, b)
+                } else {
+                    val r = kotlin.math.hypot(st.first - a.first, st.second - a.second)
+                    val a0 = deg(a, st)
+                    val sw = sweep(a0, deg(a, b))
+                    val e = (a.first + r * kotlin.math.cos(Math.toRadians(a0 + sw))) to (a.second + r * kotlin.math.sin(Math.toRadians(a0 + sw)))
+                    liveText = "Yay açısı ${"%.1f".format(sw)}° · Yarıçap ${fmt(r)}$u · Yay uzunluğu ${fmt(r * Math.toRadians(sw))}$u"
+                    arcSegs(a, r, a0, sw) + seg(a, st) + seg(a, e)
+                }
+            }
             CadTool.RECT -> {
-                liveText = "${fmt(abs(dx))} × ${fmt(abs(dy))}"
+                liveText = "${fmt(abs(dx))} × ${fmt(abs(dy))}$u"
                 val c1 = b.first to a.second
                 val c3 = a.first to b.second
                 seg(a, c1) + seg(c1, b) + seg(b, c3) + seg(c3, a)
@@ -891,7 +973,7 @@ class CadEditor(private val context: Context, private val scope: CoroutineScope)
             else -> {
                 var ang = Math.toDegrees(kotlin.math.atan2(dy, dx))
                 if (ang < 0) ang += 360.0
-                liveText = "Uzunluk ${fmt(kotlin.math.hypot(dx, dy))} · Açı ${"%.1f".format(ang)}°"
+                liveText = "Uzunluk ${fmt(kotlin.math.hypot(dx, dy))}$u · Açı ${"%.1f".format(ang)}°"
                 val prev = if (tool == CadTool.PLINE) plinePts.zipWithNext { p, q -> seg(p, q) }.fold(FloatArray(0)) { x, y -> x + y } else FloatArray(0)
                 prev + seg(a, b)
             }
@@ -923,6 +1005,16 @@ class CadEditor(private val context: Context, private val scope: CoroutineScope)
                 lineStart = b
                 overlay(rubber = plinePts.zipWithNext { p, q -> seg(p, q) }.fold(FloatArray(0)) { x, y -> x + y }, cursor = b)
             }
+            CadTool.ARC -> {
+                val st = arcStart
+                if (st == null) {
+                    // ikinci nokta: yarıçap ve başlangıç açısı; bitişi bekle
+                    arcStart = b
+                    overlay(rubber = drawPreview(a, b), cursor = b)
+                } else {
+                    addArc(a, kotlin.math.hypot(st.first - a.first, st.second - a.second), deg(a, st), deg(a, b))
+                }
+            }
             CadTool.CIRCLE -> {
                 lineStart = null
                 val r = kotlin.math.hypot(b.first - a.first, b.second - a.second)
@@ -948,6 +1040,21 @@ class CadEditor(private val context: Context, private val scope: CoroutineScope)
                 lastAngle = v2
             }
             CadTool.CIRCLE -> if (v1 > 0) commitDraw(a, (a.first + v1) to a.second)
+            CadTool.ARC -> {
+                val st = arcStart
+                if (st == null) {
+                    // yarıçap ve başlangıç açısı
+                    if (v1 <= 0) return
+                    val r = Math.toRadians(v2)
+                    commitDraw(a, (a.first + v1 * kotlin.math.cos(r)) to (a.second + v1 * kotlin.math.sin(r)))
+                } else {
+                    // yay açısı: başlangıçtan saat yönü tersine (eksi: saat yönünde)
+                    if (v1 == 0.0 || abs(v1) >= 360) return
+                    val rr = kotlin.math.hypot(st.first - a.first, st.second - a.second)
+                    val a0 = deg(a, st)
+                    if (v1 > 0) addArc(a, rr, a0, a0 + v1) else addArc(a, rr, a0 + v1, a0)
+                }
+            }
             CadTool.RECT -> if (v1 != 0.0 && v2 != 0.0) commitDraw(a, (a.first + v1) to (a.second + v2))
             else -> {}
         }
@@ -1068,7 +1175,7 @@ class CadEditor(private val context: Context, private val scope: CoroutineScope)
         }
 
         private fun constrain(p: Triple<Int, Double, Double>, b: Triple<Int, Double, Double>, tol: Double): Triple<Int, Double, Double> = when (tool) {
-            in drawTools -> track(p, if (tool == CadTool.CIRCLE) null else lineStart, tol, tool != CadTool.RECT)
+            in drawTools -> track(p, if (tool == CadTool.CIRCLE || tool == CadTool.ARC) null else lineStart, tol, tool != CadTool.RECT)
             CadTool.MOVE, CadTool.COPY, CadTool.MIRROR -> track(p, b.second to b.third, tol, true)
             CadTool.MEASURE -> track(p, measureStart, tol, true)
             CadTool.DIMENSION -> track(p, if (dimP2 == null) dimP1 else null, tol, true)
@@ -1167,6 +1274,8 @@ class CadEditor(private val context: Context, private val scope: CoroutineScope)
                 in drawTools -> {
                     val a = lineStart ?: return
                     val moved = abs(a.first - p.second) + abs(a.second - p.third) > tol * 0.05
+                    val arcTap = tool == CadTool.ARC && !pressSetAnchor && moved
+                    if (arcTap) { commitDraw(a, cur); return }
                     if (!moved) {
                         // yalnızca dokunuldu: ilk nokta kondu (ya da çapanın üstüne dokunuldu), sonrakini bekle
                         overlay(rubber = if (tool == CadTool.PLINE && plinePts.size > 1) drawPreview(a, a) else null, cursor = a)
@@ -1225,7 +1334,7 @@ class CadEditor(private val context: Context, private val scope: CoroutineScope)
 
         override fun onCancel() {
             dragBase = null
-            if (pressSetAnchor && tool in drawTools && plinePts.isEmpty()) lineStart = null
+            if (pressSetAnchor && tool in drawTools && plinePts.isEmpty()) { lineStart = null; arcStart = null }
             pressSetAnchor = false
             overlay()
         }

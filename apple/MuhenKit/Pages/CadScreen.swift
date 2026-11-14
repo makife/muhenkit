@@ -44,7 +44,15 @@ final class CadModel: ObservableObject {
         do {
             let meta = try ProjectStore.meta(id)
             let data = try ProjectStore.read(id)
-            let d = try await Task.detached(priority: .userInitiated) { try CadDocument.open(name: meta.name, data: data) }.value
+            let d = try await Task.detached(priority: .userInitiated) { () -> CadDocument in
+                let d = try CadDocument.open(name: meta.name, data: data)
+                // eski DXF sürümünde birim dosyada tutulamıyor: proje bilgisinden geri yükle
+                if let u = meta.units, [4, 5, 6].contains(u), d.scene.units != u {
+                    d.setUnits(u)
+                    d.rebuild()
+                }
+                return d
+            }.value
             d.setDirty(meta.dirty)
             project = meta
             ProjectStore.lastProject = id
@@ -78,6 +86,7 @@ final class CadModel: ObservableObject {
         }
         m.view = [view.cx + d.originX, view.cy + d.originY, view.zoom]
         m.hidden = Array(hidden).sorted()
+        if let u = d.scene?.units, [4, 5, 6].contains(u) { m.units = u }
         ProjectStore.saveMeta(m)
         project = m
     }
@@ -205,7 +214,8 @@ struct CadScreen: View {
         case .symbol: return "Sembol ölçeği"
         case .rotate: return "Döndürme açısı (°)"
         case .scale: return "Ölçek çarpanı"
-        case .circle: return "Yarıçap"
+        case .circle: return "Yarıçap" + model.editor.unitSuffixParen
+        case .arc: return model.editor.arcStage == 1 ? "Yarıçap" + model.editor.unitSuffixParen : "Yay açısı (°)"
         case .rect: return "Genişlik, yükseklik"
         case .dimension: return "Ölçü çizgisi uzaklığı"
         default: return "Değer"
@@ -215,6 +225,7 @@ struct CadScreen: View {
     private var numberHint: String {
         switch numberAsk {
         case .line, .pline: return "Uzunluk (imleç yönünde), uzunluk<açı ya da dx,dy"
+        case .arc: return model.editor.arcStage == 1 ? "Yarıçap (imleç yönünde) ya da yarıçap<başlangıç açısı" : "Başlangıçtan saat yönü tersine, ör. 67 (eksi: saat yönünde)"
         case .rect: return "ör. 400,300"
         default: return ""
         }
@@ -326,6 +337,7 @@ private struct EditorBody: View {
     @State private var flyout: ToolCat?
     @State private var toast: String?
     @State private var showTables = false
+    @State private var showUnits = false
 
     private static let railW: CGFloat = 64
     private static let sideW: CGFloat = 92
@@ -398,6 +410,14 @@ private struct EditorBody: View {
         .confirmationDialog("Tablo ekle", isPresented: $showTables, titleVisibility: .visible) {
             ForEach(TableKind.allCases) { k in Button(k.title) { table = k } }
         }
+        .confirmationDialog("Çizim birimi", isPresented: $showUnits, titleVisibility: .visible) {
+            ForEach([4, 5, 6], id: \.self) { u in
+                let name = u == 4 ? "Milimetre (mm)" : u == 5 ? "Santimetre (cm)" : "Metre (m)"
+                Button((editor.scene?.units == u ? "✓ " : "") + name) { if editor.scene?.units != u { editor.setUnits(u) } }
+            }
+        } message: {
+            Text("Yazdığınız uzunluk, yarıçap ve ölçüler bu birimde olur. Mevcut çizim ölçeklenmez.")
+        }
     }
 
     private func fitIfNeeded(_ s: CadScene) {
@@ -460,7 +480,7 @@ private struct EditorBody: View {
 
     // ───────────────────────── ipucu çubuğu ─────────────────────────
 
-    private var drawTool: Bool { [.line, .pline, .circle, .rect].contains(editor.tool) }
+    private var drawTool: Bool { [.line, .pline, .circle, .arc, .rect].contains(editor.tool) }
     private var pivotTool: Bool { editor.tool == .rotate || editor.tool == .scale }
     private var drawStarted: Bool { editor.tool == .pline ? editor.plineCount > 0 : editor.hasAnchor }
 
@@ -478,6 +498,9 @@ private struct EditorBody: View {
         if ed.tool == .mirror && !ed.selection.isEmpty { return ed.hint }
         if ed.tool == .select, let info = ed.selectionInfo { return info }
         if drawTool && drawStarted {
+            if ed.tool == .arc {
+                return ed.live ?? (ed.arcStage == 1 ? "Başlangıç noktasına \(tapWord) ya da yarıçapı girin." : "Bitiş noktasına \(tapWord) ya da yay açısını girin (ör. 67).")
+            }
             return ed.live ?? (ed.tool == .circle ? "Yarıçap kadar sürükleyin ya da yarıçapı girin." :
                 ed.tool == .rect ? "Karşı köşeye \(tapWord) ya da ölçüyü girin." : "Sonraki noktaya \(tapWord) ya da uzunluk girin.")
         }
@@ -622,6 +645,7 @@ private struct EditorBody: View {
                 ToolItem(icon: "line.diagonal", label: "Çizgi", active: ed.tool == .line) { ed.selectTool(.line) },
                 ToolItem(icon: "point.topleft.down.curvedto.point.bottomright.up", label: "Ç.Çizgi", active: ed.tool == .pline) { ed.selectTool(.pline) },
                 ToolItem(icon: "circle", label: "Daire", active: ed.tool == .circle) { ed.selectTool(.circle) },
+                ToolItem(icon: "rainbow", label: "Yay", active: ed.tool == .arc) { ed.selectTool(.arc) },
                 ToolItem(icon: "square", label: "Dikdörtgen", active: ed.tool == .rect) { ed.selectTool(.rect) },
                 ToolItem(icon: "textformat", label: "Yazı", active: ed.tool == .text) { ed.selectTool(.text) },
                 ToolItem(icon: "arrow.left.and.right", label: "Ölçü", active: ed.tool == .dimension) { ed.selectTool(.dimension) },
@@ -653,6 +677,7 @@ private struct EditorBody: View {
                 ToolItem(icon: "safari", label: "Açı 15°", active: ed.angleSnap) { ed.angleSnap.toggle() },
                 ToolItem(icon: "plus", label: "Orto", active: ed.ortho) { ed.ortho.toggle() },
                 ToolItem(icon: "line.3.horizontal", label: "İz", active: ed.tracking) { ed.tracking.toggle() },
+                ToolItem(icon: "ruler", label: "Birim: " + (ed.unitLabel.isEmpty ? "?" : ed.unitLabel), active: false, enabled: ed.scene != nil && free) { showUnits = true },
             ]
         }
     }
@@ -797,6 +822,86 @@ private struct EditorBody: View {
     }
 }
 
+/// Seçili çizgi / daire / yay geometrisi: değer yazıp "Uygula" ile değişir (geri alınabilir)
+private struct GeomSection: View {
+    let geom: (id: Int, type: String, values: [String: Double])
+    let unit: String
+    let onApply: ([String: Double]) -> Void
+    @State private var texts: [String: String] = [:]
+
+    private var uu: String { unit.isEmpty ? "" : " (\(unit))" }
+    private static func norm(_ a: Double) -> Double { let x = a.truncatingRemainder(dividingBy: 360); return x < 0 ? x + 360 : x }
+
+    /// (anahtar, başlık, ilk değer)
+    private var fields: [(String, String, Double)] {
+        let v = geom.values
+        if geom.type == "LINE" {
+            let x1 = v["x1"] ?? 0, y1 = v["y1"] ?? 0, x2 = v["x2"] ?? 0, y2 = v["y2"] ?? 0
+            return [("len", "Uzunluk" + uu, hypot(x2 - x1, y2 - y1)), ("ang", "Açı (°)", Self.norm(atan2(y2 - y1, x2 - x1) * 180 / .pi)),
+                    ("x1", "Başlangıç X", x1), ("y1", "Başlangıç Y", y1), ("x2", "Bitiş X", x2), ("y2", "Bitiş Y", y2)]
+        }
+        let r = v["r"] ?? 0
+        var f: [(String, String, Double)] = [("r", "Yarıçap" + uu, r), ("d", "Çap" + uu, 2 * r), ("cx", "Merkez X", v["cx"] ?? 0), ("cy", "Merkez Y", v["cy"] ?? 0)]
+        if geom.type == "ARC" {
+            let a0 = v["a0"] ?? 0, a1 = v["a1"] ?? 0
+            var sw = (a1 - a0).truncatingRemainder(dividingBy: 360)
+            if sw <= 0 { sw += 360 }
+            f += [("a0", "Başlangıç açısı (°)", a0), ("a1", "Bitiş açısı (°)", a1), ("sw", "Yay açısı (°)", sw)]
+        }
+        return f
+    }
+
+    private func num(_ k: String) -> Double? { texts[k].flatMap { Double($0.replacingOccurrences(of: ",", with: ".")) } }
+    private var changed: [String] { fields.filter { f in num(f.0).map { abs($0 - f.2) > 1e-9 } ?? false }.map { $0.0 } }
+
+    var body: some View {
+        Section(geom.type == "LINE" ? "Çizgi" : geom.type == "ARC" ? "Yay" : "Daire") {
+            ForEach(Array(fields.enumerated()), id: \.offset) { _, f in
+                HStack {
+                    Text(f.1)
+                    Spacer()
+                    TextField("", text: Binding(get: { texts[f.0] ?? "" }, set: { texts[f.0] = $0 }))
+                        .multilineTextAlignment(.trailing)
+                        .frame(maxWidth: 140)
+                        #if os(iOS)
+                        .keyboardType(.numbersAndPunctuation)
+                        #endif
+                }
+            }
+            if geom.type == "ARC" {
+                let r = num("r") ?? geom.values["r"] ?? 0, sw = num("sw") ?? 0
+                Text("Yay uzunluğu \(CadEditor.fmt(r * sw * .pi / 180))\(unit.isEmpty ? "" : " " + unit)").foregroundStyle(.secondary)
+            }
+            if geom.type == "LINE" { Text("Uzunluk/açı değişince başlangıç noktası sabit kalır.").font(.caption).foregroundStyle(.secondary) }
+            Button("Uygula") { apply() }.disabled(changed.isEmpty || changed.contains { num($0) == nil })
+        }
+        .onAppear { for f in fields { texts[f.0] = CadEditor.fmtPlain(f.2) } }
+    }
+
+    private func apply() {
+        var out: [String: Double] = [:]
+        let ch = changed
+        if geom.type == "LINE" {
+            guard let x1 = num("x1"), let y1 = num("y1") else { return }
+            if ch.contains("len") || ch.contains("ang") {
+                guard let l = num("len"), let a = num("ang") else { return }
+                out = ["x1": x1, "y1": y1, "x2": x1 + l * cos(a * .pi / 180), "y2": y1 + l * sin(a * .pi / 180)]
+            } else {
+                for k in ["x1", "y1", "x2", "y2"] { if let v = num(k) { out[k] = v } }
+            }
+        } else {
+            if ch.contains("d") && !ch.contains("r"), let d = num("d") { out["r"] = d / 2 } else if let r = num("r") { out["r"] = r }
+            if let x = num("cx") { out["cx"] = x }
+            if let y = num("cy") { out["cy"] = y }
+            if geom.type == "ARC", let a0 = num("a0") {
+                out["a0"] = a0
+                if ch.contains("sw") && !ch.contains("a1"), let sw = num("sw") { out["a1"] = a0 + sw } else if let a1 = num("a1") { out["a1"] = a1 }
+            }
+        }
+        onApply(out)
+    }
+}
+
 /// Seçimin katmanı ve rengi (Android PropsSheet)
 private struct PropsSheet: View {
     @ObservedObject var editor: CadEditor
@@ -809,6 +914,10 @@ private struct PropsSheet: View {
     var body: some View {
         NavigationStack {
             List {
+                if let g = editor.selectedGeometry() {
+                    GeomSection(geom: g, unit: editor.unitLabel) { editor.setGeometry(g.id, $0) }
+                        .id("\(g.id)-\(editor.revision)")
+                }
                 Section("\(editor.selection.count) nesne seçili") {
                     if let s = editor.scene {
                         Menu {
