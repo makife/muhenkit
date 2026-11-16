@@ -23,6 +23,14 @@ Platformlar arası eşdeğer dosyalar (bir özellik eklerken hepsini güncelle):
 - Modüller: `ui/modules/*.kt` · `Modules/*.cs` · `apple/.../Modules/*.swift`
 - Dışa aktarma: `ui/Exporter.kt` · `Cad/Exporter.cs` (kendi vektör PDF yazıcısı) · `Cad/Exporter.swift` (CoreGraphics)
 
+Ölçülü çizim (dört platformda aynı):
+- Birim Ayarlar → Birim (mm/cm/m). Çekirdek `mk_set_insunits` DXF başlığına `$INSUNITS` yazar (4 mm, 5 cm, 6 m), ama yalnız
+  R2000+ (AC1015+) dosyalarda; eski DXF için birim proje meta'sında (`units`) da saklanır, açılışta oradan geri yüklenir.
+  Sayı girişinde birim eki yok (kullanıcı istemedi: "3.47cm" ayrıştırılmaz), değerler seçili birimde.
+- Yay aracı: merkez → başlangıç noktası → açı (eksi = saat yönü). Çekirdek `mk_add_arc` (açılar derece, CCW).
+- Özellik ekranında geometri düzenleme: `mk_entity_props` / `mk_set_entity_props` ("anahtar=değer" satırları; LINE x1 y1 x2 y2,
+  CIRCLE cx cy r, ARC cx cy r a0 a1; geri alınabilir). Çekirdek mutlak koordinat verir, düzenleyici origin çıkarılmış göreli koordinat kullanır.
+
 Tasarım: Android arayüzü esastır (mavi devre kartı ana sayfa, çizimde gizlenebilir üst çubuk + ipucu çubuğu +
 Çiz/Düzenle/Ekle/Ayarlar sekmeleri, geniş ekranda sol ray). iOS/macOS bununla birebir aynı olmalı.
 
@@ -91,4 +99,5 @@ yerelde `android/keystore.properties` (gitignore). Asla depoya koyma.
 - Hesaplar ön tasarım amaçlıdır; Hakkında ekranında sorumluluk notu var.
 - App Store artık yalnız Xcode 26 / iOS 26 SDK yapıları kabul ediyor (90725); macos-15 sunucusu yetmez.
 - Yerel Python çıktısında Türkçe karakter için `PYTHONIOENCODING=utf-8` kullan (konsol cp1254).
+- Bash heredoc içinde Python yazınca `\n` gerçek satır sonuna dönüşebiliyor; kaynak düzenleyen betikleri Write ile dosyaya yaz, sonra çalıştır.
 - Windows uygulaması bir dosyayı açık tutuyorsa (test penceresi) yazma "Access denied" verir: önce geçici klasöre yaz, sonra kopyala.
