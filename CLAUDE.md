@@ -118,3 +118,8 @@ yerelde `android/keystore.properties` (gitignore). Asla depoya koyma.
 - Yerel Python çıktısında Türkçe karakter için `PYTHONIOENCODING=utf-8` kullan (konsol cp1254).
 - Bash heredoc içinde Python yazınca `\n` gerçek satır sonuna dönüşebiliyor; kaynak düzenleyen betikleri Write ile dosyaya yaz, sonra çalıştır.
 - Windows uygulaması bir dosyayı açık tutuyorsa (test penceresi) yazma "Access denied" verir: önce geçici klasöre yaz, sonra kopyala.
+- WinUI: `ProtectedCursor` yalnız alt sınıftan ayarlanır ve `Border` mühürlü → imleçli öğe için `Grid` alt sınıfı (`SplitHandle`).
+- Windows öz-testleri (`MUHENKIT_SELFTEST=…`) son açılan projeye (ya da verilen DXF'in proje kopyasına) test nesneleri ekler;
+  kullanıcının gerçek projesinde çalıştırınca söyle ya da geri al.
+- Görünüm alanları eklenince "etkin bölme" kavramı var: yeni bir görünüm işlemi (sığdır, ekrandaki pencere, tolerans) etkin bölmenin
+  boyutunu kullanmalı, tuvalin tamamını değil (Windows `CadCanvas.View/ViewWindow`, Android `paneRect(active)`, Apple `canvasSize`).
