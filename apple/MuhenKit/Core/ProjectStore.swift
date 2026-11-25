@@ -17,6 +17,16 @@ struct ProjectMeta: Codable, Identifiable, Hashable {
     var units: Int?
     /// Uzunluk adımı: artı açık, eksi kapalı (değer korunur), nil/0 hiç ayarlanmamış
     var step: Double?
+    var viewports: Viewports?
+}
+
+/// Görünüm alanları (AutoCAD gibi 2×2): dört görünüm açık mı, etkin bölme, bölme oranları ve her bölmenin görünümü
+/// (mutlak dünya: merkez x, y, yakınlaştırma; ayarlanmamış bölme null). Dört platformda meta.json "viewports".
+struct Viewports: Codable, Hashable {
+    var quad: Bool
+    var active: Int
+    var split: [Double]
+    var views: [[Double]?]
 }
 
 /// "Projelerim": açılan her DXF uygulamanın kendi alanına kopyalanır, düzenlemeler bu kopyaya otomatik kaydedilir.

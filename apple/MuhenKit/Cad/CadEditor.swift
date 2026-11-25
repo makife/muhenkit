@@ -125,6 +125,8 @@ final class CadEditor: ObservableObject {
     var onEdited: (() -> Void)?
     /// "Sığdır" komutu (komut satırından Z)
     var onFit: (() -> Void)?
+    /// VP komutu: dört görünüm ↔ tek görünüm
+    var onToggleQuad: (() -> Void)?
 
     private var fixedScale: Double?
     private var placeScale: Double { fixedScale ?? symbolScale }
@@ -1168,6 +1170,7 @@ final class CadEditor: ObservableObject {
         case "U", "UNDO": undo(); return true
         case "REDO": redo(); return true
         case "Z", "ZE", "ZOOM": onFit?(); return true
+        case "VP", "VPORTS", "VPMAX", "VPMIN", "GÖRÜNÜM": onToggleQuad?(); return true
         case "G", "GROUP": groupSelection(); return true
         case "X", "EXPLODE": explodeSelection(); return true
         case "K", "CL", "CLOSE" where tool == .pline: finishPolyline(closed: true); return true

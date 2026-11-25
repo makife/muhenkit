@@ -15,6 +15,8 @@ struct CanvasInputHandlers {
     var rightClick: () -> Void = {}
     /// Klavye (macOS): işlendiyse true
     var key: (String, Bool) -> Bool = { _, _ in false }
+    /// macOS imleci: true ok (Seç aracı), false artı (çizim/düzenleme araçları)
+    var arrowCursor: () -> Bool = { true }
 }
 
 #if os(iOS)
@@ -193,8 +195,11 @@ struct CanvasInputView: NSViewRepresentable {
         override func updateTrackingAreas() {
             super.updateTrackingAreas()
             trackingAreas.forEach(removeTrackingArea)
-            addTrackingArea(NSTrackingArea(rect: bounds, options: [.mouseMoved, .activeInKeyWindow, .inVisibleRect, .mouseEnteredAndExited], owner: self))
+            addTrackingArea(NSTrackingArea(rect: bounds, options: [.mouseMoved, .activeInKeyWindow, .inVisibleRect, .mouseEnteredAndExited, .cursorUpdate], owner: self))
         }
+
+        private func updateCursor() { (handlers.arrowCursor() ? NSCursor.arrow : NSCursor.crosshair).set() }
+        override func cursorUpdate(with event: NSEvent) { updateCursor() }
 
         private func loc(_ e: NSEvent) -> CGPoint { convert(e.locationInWindow, from: nil) }
 
@@ -213,7 +218,10 @@ struct CanvasInputView: NSViewRepresentable {
             handlers.release(loc(e))
         }
 
-        override func mouseMoved(with e: NSEvent) { handlers.move(loc(e), false) }
+        override func mouseMoved(with e: NSEvent) {
+            updateCursor()
+            handlers.move(loc(e), false)
+        }
 
         override func rightMouseDown(with e: NSEvent) { panFrom = loc(e); panMoved = false }
         override func otherMouseDown(with e: NSEvent) { panFrom = loc(e); panMoved = false }

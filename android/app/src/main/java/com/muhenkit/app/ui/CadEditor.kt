@@ -21,6 +21,7 @@ import com.muhenkit.app.cad.AppScope
 import com.muhenkit.app.cad.ProjectMeta
 import com.muhenkit.app.cad.ProjectStore
 import com.muhenkit.app.cad.ViewState
+import com.muhenkit.app.cad.Viewports
 import com.muhenkit.app.cad.TextMesh
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -61,7 +62,23 @@ class CadEditor(private val context: Context, private val scope: CoroutineScope)
             field = v
             v?.editInput = input
             v?.onViewChanged = { viewChanged() }
+            v?.onLayoutChanged = { layoutTick++; metaChanged = true }
         }
+
+    /** Görünüm alanı düzeni değişince artar (bölme adları/çerçevesi yeniden yerleşir) */
+    var layoutTick by mutableStateOf(0); private set
+
+    /** Dört görünüm ↔ tek görünüm (etkin bölme büyür) */
+    fun toggleQuad() {
+        val g = glView ?: return
+        g.setQuad(!g.quad)
+    }
+
+    /** Bölme köşe düğmesi: dört görünümde o bölmeyi tek ekrana büyüt, tek görünümde dörde böl */
+    fun paneButton(i: Int) {
+        val g = glView ?: return
+        if (g.quad) { g.setActive(i); g.setQuad(false) } else g.setQuad(true)
+    }
 
     var doc by mutableStateOf<CadDocument?>(null); private set
     var scene by mutableStateOf<CadScene?>(null); private set
@@ -238,7 +255,16 @@ class CadEditor(private val context: Context, private val scope: CoroutineScope)
                 glView?.setOverlay(Overlay.EMPTY)
                 // kayıtlı görünüm mutlak koordinatta; bu açılışın kökenine göre çevir
                 val initial = m.view?.let { v -> ViewState(v[0] - d.originX, v[1] - d.originY, v[2]) }
+                val vp = m.viewports
+                glView?.let { g ->
+                    g.setSplit(vp?.fx ?: 0.5, vp?.fy ?: 0.5)
+                    g.setActive(vp?.active ?: 0)
+                    g.setQuad(vp?.quad ?: false)
+                }
                 glView?.setScene(s, mesh, initial)
+                if (vp != null) glView?.let { g ->
+                    for (i in 0 until 4) if (i != g.active) vp.views[i]?.let { v -> g.setPaneView(i, ViewState(v[0] - d.originX, v[1] - d.originY, v[2])) }
+                }
             } catch (e: CadException) {
                 error = e.message
             } catch (e: OutOfMemoryError) {
@@ -276,6 +302,10 @@ class CadEditor(private val context: Context, private val scope: CoroutineScope)
         val v = glView?.renderer?.view
         val step = if (stepOn) lengthStep else -lengthStep
         val view = v?.let { doubleArrayOf(it.cx + d.originX, it.cy + d.originY, it.zoom) } ?: m.view
+        val vps = glView?.let { g ->
+            Viewports(g.quad, g.active, g.splitX, g.splitY,
+                g.paneViews().map { p -> p?.let { doubleArrayOf(it.cx + d.originX, it.cy + d.originY, it.zoom) } })
+        } ?: m.viewports
         val ctx = context
         if (edits == 0 && !changed && !final) return
         val job = AppScope.launch {
@@ -283,7 +313,7 @@ class CadEditor(private val context: Context, private val scope: CoroutineScope)
                 if (edits > 0) ProjectStore.writeDrawing(ctx, m.id, d.saveCopy())
                 val nm = m.copy(
                     modified = if (edits > 0) System.currentTimeMillis() else m.modified,
-                    dirtyToSource = d.dirty, view = view, hidden = hid, units = s?.units ?: m.units, step = step,
+                    dirtyToSource = d.dirty, view = view, hidden = hid, units = s?.units ?: m.units, step = step, viewports = vps,
                 )
                 ProjectStore.saveMeta(ctx, nm)
                 if (s != null && (edits > 0 || !ProjectStore.thumb(ctx, m.id).exists())) ProjectStore.writeThumb(ctx, m.id, s, hid)

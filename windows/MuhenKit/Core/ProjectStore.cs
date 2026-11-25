@@ -14,7 +14,33 @@ public sealed record ProjectMeta(
     long SizeBytes = 0,
     /// <summary>Kullanıcının seçtiği çizim birimi (4 mm, 5 cm, 6 m); eski DXF sürümleri birimi dosyada tutamaz</summary>
     int Units = -1,
-    double Step = 0);
+    double Step = 0,
+    Viewports? Viewports = null);
+
+/// <summary>
+/// Görünüm alanları (AutoCAD gibi 2×2): dört görünüm açık mı, etkin bölme, bölme oranları ve her bölmenin görünümü
+/// (mutlak dünya: merkez x, y, yakınlaştırma; hiç ayarlanmamış bölme null). Dört platformda meta.json "viewports".
+/// </summary>
+public sealed record Viewports(bool Quad, int Active, double Fx, double Fy, double[]?[] Views)
+{
+    public JsonObject ToJson() => new()
+    {
+        ["quad"] = Quad, ["active"] = Active, ["split"] = new JsonArray(Fx, Fy),
+        ["views"] = new JsonArray(Views.Select(v => v == null ? null : (JsonNode)new JsonArray(v.Select(x => (JsonNode)x).ToArray())).ToArray()),
+    };
+
+    public static Viewports? FromJson(JsonNode? n)
+    {
+        if (n is not JsonObject j) return null;
+        var sp = j["split"]?.AsArray();
+        var views = new double[]?[4];
+        if (j["views"] is JsonArray va)
+            for (int i = 0; i < 4 && i < va.Count; i++)
+                if (va[i] is JsonArray a && a.Count == 3) views[i] = a.Select(x => (double)x!).ToArray();
+        return new Viewports((bool?)j["quad"] ?? false, (int?)j["active"] ?? 0,
+            sp is { Count: 2 } ? (double)sp[0]! : 0.5, sp is { Count: 2 } ? (double)sp[1]! : 0.5, views);
+    }
+}
 
 /// <summary>
 /// "Projelerim": açılan her DXF uygulamanın kendi alanına kopyalanır, düzenlemeler bu kopyaya
@@ -73,7 +99,8 @@ public static class ProjectStore
                 (long?)j["created"] ?? 0, (long?)j["modified"] ?? 0, (bool?)j["dirty"] ?? false,
                 j["view"]?.AsArray().Select(v => (double)v!).ToArray(),
                 j["hidden"]?.AsArray().Select(v => (int)v!).ToArray(),
-                drawing.Exists ? drawing.Length : 0, (int?)j["units"] ?? -1, (double?)j["step"] ?? 0);
+                drawing.Exists ? drawing.Length : 0, (int?)j["units"] ?? -1, (double?)j["step"] ?? 0,
+                Viewports.FromJson(j["viewports"]));
         }
     }
 
@@ -87,6 +114,7 @@ public static class ProjectStore
         j["hidden"] = new JsonArray((m.Hidden ?? []).Select(v => (JsonNode)v).ToArray());
         j["units"] = m.Units;
         j["step"] = m.Step;
+        if (m.Viewports != null) j["viewports"] = m.Viewports.ToJson();
         lock (Lock) AtomicWrite(Path.Combine(Dir(m.Id), "meta.json"), System.Text.Encoding.UTF8.GetBytes(j.ToJsonString()));
     }
 

@@ -59,6 +59,7 @@ public sealed partial class CadPage : Page
             CoordText.Text = $"X {x + _doc.OriginX,11:F2}  Y {y + _doc.OriginY,11:F2}";
         };
         Canvas.ViewChanged += _ => _metaChanged = true;
+        Canvas.LayoutChanged += () => { _metaChanged = true; if (Tabs.Items.IndexOf(Tabs.SelectedItem) == 4) BuildCommands(4); };
         // sağ tık: çizgi/çoklu çizgi bitir, yoksa Esc
         Canvas.RightClick += _ed.RightClick;
         BuildToolStrip();
@@ -152,6 +153,10 @@ public sealed partial class CadPage : Page
                 B("Yakınlaş", "", () => Canvas.ZoomBy(1.5), has);
                 B("Uzaklaş", "", () => Canvas.ZoomBy(1 / 1.5), has);
                 Sep();
+                if (Canvas.Quad) B("Tek görünüm", "\uE740", Canvas.ToggleQuad, has, "VP — etkin görünümü (mavi çerçeveli) tek ekrana büyüt");
+                else B("4 görünüm", "\uF0E2", Canvas.ToggleQuad, has, "VP — çizim alanını AutoCAD gibi dört görünüme böl");
+                B("Sonraki görünüm", "\uE8AB", Canvas.CycleActive, has && Canvas.Quad, "Ctrl+R");
+                Sep();
                 B("Sağ panel", "", () => RightPanel.Visibility = RightPanel.Visibility == Visibility.Visible ? Visibility.Collapsed : Visibility.Visible);
                 break;
         }
@@ -200,6 +205,7 @@ public sealed partial class CadPage : Page
     private void SyncUi()
     {
         bool has = _doc != null;
+        Canvas.ArrowCursor = _ed.Tool == CadTool.Select;
         foreach (var (t, b) in _toolButtons)
         {
             b.IsChecked = has && _ed.Tool == t;
@@ -281,6 +287,7 @@ public sealed partial class CadPage : Page
                 case VirtualKey.O: OnOpen(this, new RoutedEventArgs()); return true;
                 case VirtualKey.P: OnExport(); return true;
                 case VirtualKey.A: _ed.SelectAll(); return true;
+                case VirtualKey.R: Canvas.CycleActive(); return true;
             }
             return false;
         }
@@ -444,7 +451,19 @@ public sealed partial class CadPage : Page
             else for (int i = 0; i < s.Layers.Count; i++) if (s.Layers[i].OffInFile) Canvas.Hidden.Add(i);
             // kayıtlı görünüm mutlak koordinatta; bu açılışın kökenine göre çevir
             ViewState? initial = m.View is { Length: 3 } v ? new ViewState(v[0] - doc.OriginX, v[1] - doc.OriginY, v[2]) : null;
+            var vp = m.Viewports;
+            if (vp != null)
+            {
+                Canvas.Split = (vp.Fx, vp.Fy);
+                Canvas.Active = vp.Active;
+                Canvas.Quad = vp.Quad;
+            }
             Canvas.SetScene(s, initial);
+            if (vp != null)
+                for (int i = 0; i < 4; i++)
+                    if (i != Canvas.Active && vp.Views[i] is { Length: 3 } pv && pv[2] > 0)
+                        Canvas.SetPaneView(i, new ViewState(pv[0] - doc.OriginX, pv[1] - doc.OriginY, pv[2]));
+            _metaChanged = false;
             _ed.Attach(doc);
             RestoreStep(m.Step);
             FillLayers(s);
@@ -468,6 +487,7 @@ public sealed partial class CadPage : Page
             if (Environment.GetEnvironmentVariable("MUHENKIT_SELFTEST") == "ea") _ = SelfTestTitleExport();
             if (Environment.GetEnvironmentVariable("MUHENKIT_SELFTEST") == "arc") _ = SelfTestArc();
             if (Environment.GetEnvironmentVariable("MUHENKIT_SELFTEST") == "step") _ = SelfTestStep();
+            if (Environment.GetEnvironmentVariable("MUHENKIT_SELFTEST") == "vp") _ = SelfTestViewports();
             if (Environment.GetEnvironmentVariable("MUHENKIT_SELFTEST") == "ed") OnExport();
             if (Environment.GetEnvironmentVariable("MUHENKIT_SELFTEST") is ['f', var fk]) AddTable((TableForms.Kind)(fk - '1'));
         }
@@ -508,6 +528,9 @@ public sealed partial class CadPage : Page
         var hidden = Canvas.Hidden.ToArray();
         var v = Canvas.View;
         double[] view = [v.Cx + d.OriginX, v.Cy + d.OriginY, v.Zoom];
+        var (fx, fy) = Canvas.Split;
+        var vps = new Viewports(Canvas.Quad, Canvas.Active, fx, fy,
+            Canvas.PaneViews.Select(p => p is { } q ? new[] { q.Cx + d.OriginX, q.Cy + d.OriginY, q.Zoom } : null).ToArray());
         double step = _ed.StepOn ? _ed.LengthStep : -_ed.LengthStep;
         var prev = _saving;
         _saving = Task.Run(async () =>
@@ -516,7 +539,7 @@ public sealed partial class CadPage : Page
             try
             {
                 if (edits > 0) ProjectStore.WriteDrawing(m.Id, d.SaveCopy());
-                var nm = m with { Modified = edits > 0 ? ProjectStore.Now : m.Modified, DirtyToSource = d.Dirty, View = view, Hidden = hidden, Units = s.Units, Step = step };
+                var nm = m with { Modified = edits > 0 ? ProjectStore.Now : m.Modified, DirtyToSource = d.Dirty, View = view, Hidden = hidden, Units = s.Units, Step = step, Viewports = vps };
                 ProjectStore.SaveMeta(nm);
                 if (edits > 0 || !File.Exists(ProjectStore.Thumb(m.Id))) ProjectStore.WriteThumb(m.Id, ScenePainter.RenderPng(s, hidden, 480, 300));
             }
@@ -1315,6 +1338,72 @@ public sealed partial class CadPage : Page
     }
 
     /// <summary>MUHENKIT_SELFTEST=step: uzunluk adımı ve yazılarak verilen ilk nokta</summary>
+    /// <summary>Görünüm alanları: dörde böl, bölmeler ayrı görünüm, bir bölmede çizilen hepsinde, büyüt/geri, kayıt</summary>
+    private async Task SelfTestViewports()
+    {
+        var log = new System.Text.StringBuilder();
+        async Task Idle() { await Task.Delay(80); while (_ed.Busy) await Task.Delay(20); await Task.Delay(80); }
+        try
+        {
+            await Task.Delay(600);
+            var d = _doc!;
+            var sw = System.Diagnostics.Stopwatch.StartNew();
+            Canvas.Quad = true;
+            await Task.Delay(400);
+            log.AppendLine($"dört görünüm: {Canvas.Quad} etkin {Canvas.Active} ({sw.ElapsedMilliseconds} ms)");
+            var pv = Canvas.PaneViews;
+            log.AppendLine("görünümler: " + string.Join(" | ", pv.Select(v => v is { } q ? $"{q.Zoom:G3}" : "yok")));
+            // 2. bölmeyi etkin yap, yakınlaştır: yalnız o değişmeli
+            Canvas.Active = 1;
+            var before = Canvas.PaneViews;
+            Canvas.ZoomBy(3);
+            var after = Canvas.PaneViews;
+            log.AppendLine($"yakınlaştır 2: değişen bölmeler {string.Join(",", Enumerable.Range(0, 4).Where(i => before[i] != after[i]).Select(i => i + 1))}");
+            // 2. bölmede çizgi çiz
+            int n0 = d.Scene.EntityCount;
+            _ed.SelectTool(CadTool.Line);
+            var v = Canvas.View;
+            double tol = Canvas.Tolerance;
+            _ed.Press(v.Cx, v.Cy, tol, false); _ed.Release(v.Cx, v.Cy, tol); await Idle();
+            _ed.Press(v.Cx + 50 * tol, v.Cy, tol, false); _ed.Release(v.Cx + 50 * tol, v.Cy, tol); await Idle();
+            log.AppendLine($"imleç çizgide ok={Canvas.ArrowCursor}");
+            _ed.Escape(); await Idle(); _ed.Escape(); _ed.SelectTool(CadTool.Select); await Idle();
+            log.AppendLine($"imleç seçimde ok={Canvas.ArrowCursor}");
+            log.AppendLine($"çizgi: {n0} → {d.Scene.EntityCount} nesne (sahne ortak)");
+            // büyüt / geri
+            Canvas.ToggleQuad(); await Task.Delay(300);
+            log.AppendLine($"büyüt: dört={Canvas.Quad} etkin={Canvas.Active} görünüm korunur={Canvas.View == after[1]}");
+            Canvas.ToggleQuad(); await Task.Delay(300);
+            log.AppendLine($"geri: dört={Canvas.Quad}");
+            Canvas.Split = (0.3, 0.6);
+            // kaydet + yeniden oku
+            Autosave(); await _saving;
+            var m = ProjectStore.Meta(_project!.Id);
+            var vp = m.Viewports;
+            log.AppendLine($"kayıt: dört={vp?.Quad} etkin={vp?.Active} oran={vp?.Fx:F2},{vp?.Fy:F2} dolu görünüm={vp?.Views.Count(x => x != null)}");
+            // çizim süresi: dört bölme
+            var t = System.Diagnostics.Stopwatch.StartNew();
+            for (int i = 0; i < 10; i++) { Canvas.ZoomBy(1.01); await Task.Delay(1); }
+            log.AppendLine($"10 yakınlaştırma {t.ElapsedMilliseconds} ms");
+            await Task.Delay(500);
+            var shot = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "muhenkit_vp.png");
+            var rtb = new Microsoft.UI.Xaml.Media.Imaging.RenderTargetBitmap();
+            await rtb.RenderAsync(this);
+            var px = await rtb.GetPixelsAsync();
+            using (var fs = System.IO.File.Create(shot))
+            {
+                var enc = await Windows.Graphics.Imaging.BitmapEncoder.CreateAsync(Windows.Graphics.Imaging.BitmapEncoder.PngEncoderId, fs.AsRandomAccessStream());
+                enc.SetPixelData(Windows.Graphics.Imaging.BitmapPixelFormat.Bgra8, Windows.Graphics.Imaging.BitmapAlphaMode.Premultiplied,
+                    (uint)rtb.PixelWidth, (uint)rtb.PixelHeight, 96, 96, System.Runtime.InteropServices.WindowsRuntime.WindowsRuntimeBufferExtensions.ToArray(px));
+                await enc.FlushAsync();
+            }
+            log.AppendLine("ekran: " + shot);
+        }
+        catch (Exception ex) { log.AppendLine("HATA " + ex); }
+        File.WriteAllText(System.IO.Path.Combine(System.IO.Path.GetTempPath(), "muhenkit_selftest.txt"), log.ToString());
+        Application.Current.Exit();
+    }
+
     private async Task SelfTestStep()
     {
         var log = new System.Text.StringBuilder();

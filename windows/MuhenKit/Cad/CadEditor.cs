@@ -1246,6 +1246,7 @@ public sealed class CadEditor : ICanvasInput
             case "U" or "UNDO": Undo(); return true;
             case "REDO": Redo(); return true;
             case "Z" or "ZE" or "ZOOM": _canvas.Fit(); return true;
+            case "VP" or "VPORTS" or "VPMAX" or "VPMIN" or "GÖRÜNÜM": _canvas.ToggleQuad(); return true;
             case "G" or "GROUP": GroupSelection(); return true;
             case "X" or "EXPLODE": ExplodeSelection(); return true;
             case "K" or "CL" or "CLOSE" when Tool == CadTool.PLine: FinishPolyline(true); return true;

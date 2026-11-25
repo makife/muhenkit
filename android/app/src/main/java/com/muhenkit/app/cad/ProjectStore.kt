@@ -37,7 +37,33 @@ data class ProjectMeta(
     val units: Int = -1,
     /** Uzunluk adımı: artı açık, eksi kapalı (değer korunur), 0 hiç ayarlanmamış */
     val step: Double = 0.0,
+    val viewports: Viewports? = null,
 )
+
+/**
+ * Görünüm alanları (AutoCAD gibi 2×2): dört görünüm açık mı, etkin bölme, bölme oranları ve her bölmenin
+ * görünümü (mutlak dünya: merkez x, y, yakınlaştırma; ayarlanmamış bölme null). Dört platformda meta.json "viewports".
+ */
+data class Viewports(val quad: Boolean, val active: Int, val fx: Double, val fy: Double, val views: List<DoubleArray?>) {
+    fun toJson(): JSONObject = JSONObject().put("quad", quad).put("active", active)
+        .put("split", JSONArray().put(fx).put(fy))
+        .put("views", JSONArray().apply { views.forEach { v -> put(v?.let { a -> JSONArray().apply { a.forEach { put(it) } } } ?: JSONObject.NULL) } })
+
+    companion object {
+        fun fromJson(j: JSONObject?): Viewports? {
+            if (j == null) return null
+            val sp = j.optJSONArray("split")
+            val va = j.optJSONArray("views")
+            val views = (0 until 4).map { i ->
+                va?.optJSONArray(i)?.takeIf { it.length() == 3 }?.let { a -> DoubleArray(3) { a.getDouble(it) } }
+            }
+            return Viewports(
+                j.optBoolean("quad"), j.optInt("active").coerceIn(0, 3),
+                sp?.optDouble(0, 0.5) ?: 0.5, sp?.optDouble(1, 0.5) ?: 0.5, views,
+            )
+        }
+    }
+}
 
 /** Ekrandan çıkınca da biten işler (otomatik kayıt) için uygulama ömürlü kapsam */
 object AppScope : CoroutineScope by CoroutineScope(SupervisorJob() + Dispatchers.Default)
@@ -80,6 +106,7 @@ object ProjectStore {
             sizeBytes = drawing(c, id).length(),
             units = j.optInt("units", -1),
             step = j.optDouble("step", 0.0).takeIf { it.isFinite() } ?: 0.0,
+            viewports = Viewports.fromJson(j.optJSONObject("viewports")),
         )
     }
 
@@ -92,6 +119,7 @@ object ProjectStore {
         j.put("hidden", JSONArray().apply { m.hidden.forEach { put(it) } })
         j.put("units", m.units)
         j.put("step", m.step)
+        m.viewports?.let { j.put("viewports", it.toJson()) }
         atomicWrite(File(dir(c, m.id), "meta.json"), j.toString().toByteArray())
     }
 

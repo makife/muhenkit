@@ -45,7 +45,19 @@ class Overlay(
  * dönüşüm matrisi değişir. Bu yüzden kaydırma/yakınlaştırma çizim boyutundan bağımsızdır.
  */
 class CadRenderer : GLSurfaceView.Renderer {
-    @Volatile var view = ViewState(0.0, 0.0, 1.0)
+    /**
+     * Görünüm alanları (AutoCAD gibi): çizilecek bölmeler — her biri (dizin, x, y, w, h) yüzey pikseli, sol üst köken.
+     * Tek görünümde yalnız etkin bölme tüm yüzeyi kaplar. Sahne GPU'ya bir kez yüklenir, her bölme glViewport ile çizilir.
+     */
+    @Volatile var panes: Array<IntArray> = emptyArray()
+    /** Bölmelerin görünümleri (dört bölme) */
+    val views = Array(4) { ViewState(0.0, 0.0, 1.0) }
+    /** Etkin bölme: imleç/yakalama işareti yalnız onda çizilir */
+    @Volatile var active = 0
+    /** Etkin bölmenin görünümü */
+    var view: ViewState
+        get() = views[active]
+        set(v) { views[active] = v }
     @Volatile var hidden: Set<Int> = emptySet()
     @Volatile var overlay: Overlay = Overlay.EMPTY
     @Volatile private var pending: Pair<CadScene, TextMesh?>? = null
@@ -117,11 +129,38 @@ class CadRenderer : GLSurfaceView.Renderer {
             pending = null
             upload(it.first, it.second)
         }
-        glClearColor(background[0], background[1], background[2], 1f)
+        val list = panes
+        val split = list.size > 1
+        glDisable(GL_SCISSOR_TEST)
+        glViewport(0, 0, width, height)
+        // dört görünümde aradaki boşluklar bölme çizgisi rengiyle görünür
+        if (split) glClearColor(0.165f, 0.184f, 0.2f, 1f) else glClearColor(background[0], background[1], background[2], 1f)
         glClearStencil(0)
         glClear(GL_COLOR_BUFFER_BIT or GL_STENCIL_BUFFER_BIT)
         val s = scene ?: return
-        val v = view
+        if (list.isEmpty()) {
+            drawPane(s, views[active], width, height, true)
+            return
+        }
+        for (p in list) {
+            val (i, x, y, w, h) = p.toList()
+            if (w <= 0 || h <= 0) continue
+            val gy = height - y - h // GL kökeni sol alt
+            glViewport(x, gy, w, h)
+            if (split) {
+                glEnable(GL_SCISSOR_TEST)
+                glScissor(x, gy, w, h)
+                glClearColor(background[0], background[1], background[2], 1f)
+                glClear(GL_COLOR_BUFFER_BIT or GL_STENCIL_BUFFER_BIT)
+            }
+            drawPane(s, views[i], w, h, i == active)
+        }
+        glDisable(GL_SCISSOR_TEST)
+        glViewport(0, 0, width, height)
+    }
+
+    /** Bir bölmeyi çizer: [w]×[h] piksel, glViewport çağıran tarafından ayarlanmış */
+    private fun drawPane(s: CadScene, v: ViewState, width: Int, height: Int, isActive: Boolean) {
         val hid = hidden
 
         // dünya → NDC: ndc = p * (sx, sy) + (tx, ty)
@@ -190,11 +229,11 @@ class CadRenderer : GLSurfaceView.Renderer {
             glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0)
         }
 
-        drawOverlay(xf, v)
+        drawOverlay(xf, v, width, height, isActive)
     }
 
     /** Seçim vurgusu, önizlemeler ve yakalama işareti. Kalınlıklar ekranda sabittir. */
-    private fun drawOverlay(xf: FloatArray, v: ViewState) {
+    private fun drawOverlay(xf: FloatArray, v: ViewState, width: Int, height: Int, isActive: Boolean) {
         val o = overlay
         if (o === Overlay.EMPTY) return
         if (ovVbo == 0) {
@@ -274,7 +313,7 @@ class CadRenderer : GLSurfaceView.Renderer {
             seg(x0, y0, x1, y0); seg(x1, y0, x1, y1); seg(x1, y1, x0, y1); seg(x0, y1, x0, y0)
             if (o.boxCrossing) flush(0.24f, 1f, 0.56f) else flush(0.22f, 0.6f, 1f)
         }
-        if (o.cursor) {
+        if (o.cursor && isActive) {
             val cx = o.cursorX.toDouble()
             val cy = o.cursorY.toDouble()
             val r = 26 * px
@@ -344,7 +383,7 @@ class CadRenderer : GLSurfaceView.Renderer {
                 glUniform4fv(uLineXf, 1, xf, 0)
             }
         }
-        if (o.snapType > 0) {
+        if (o.snapType > 0 && isActive) {
             val x = o.snapX.toDouble()
             val y = o.snapY.toDouble()
             val r = 8 * px

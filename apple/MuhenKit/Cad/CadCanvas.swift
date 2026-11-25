@@ -34,6 +34,10 @@ struct CadCanvas: View {
     var editor: CadEditor?
     /// Klavye (macOS): işlendiyse true
     var onKey: ((String, Bool) -> Bool)?
+    /// Dört görünümde: bu bölmeye dokunuldu / tıklandı → etkin bölme yap
+    var onActivate: (() -> Void)?
+    /// İmleç ve yakalama işareti çizilsin mi (dört görünümde yalnız etkin bölmede)
+    var showsCursor: Bool = true
 
     var body: some View {
         GeometryReader { geo in
@@ -93,6 +97,7 @@ struct CadCanvas: View {
             h.rightClick = { ed.rightClick() }
         }
         if let k = onKey { h.key = k }
+        if let ed = editor { h.arrowCursor = { ed.tool == .select } }
         h.pan = { d in
             var v = binding.wrappedValue
             v.cx -= d.width / v.zoom
@@ -104,6 +109,16 @@ struct CadCanvas: View {
             let (wx, wy) = Self.toWorld(p, v, size)
             let z = min(max(v.zoom * k, 1e-9), 1e9)
             binding.wrappedValue = ViewState(cx: wx - (p.x - size.width / 2) / z, cy: wy + (p.y - size.height / 2) / z, zoom: z)
+        }
+        // dört görünüm: dokunma/tıklama/kaydırma önce bu bölmeyi etkin yapar (fare gezinmesi yapmaz)
+        if let act = onActivate {
+            let press = h.press, tap = h.tap, pan = h.pan, zoom = h.zoom, box = h.box, rc = h.rightClick
+            h.press = { p, s in act(); press(p, s) }
+            h.tap = { p in act(); tap(p) }
+            h.pan = { d in act(); pan(d) }
+            h.zoom = { p, k in act(); zoom(p, k) }
+            h.box = { a, b, d in act(); box(a, b, d) }
+            h.rightClick = { act(); rc() }
         }
         return h
     }
@@ -197,7 +212,7 @@ struct CadCanvas: View {
             ctx.fill(Path(rect), with: .color(c.opacity(0.16)))
             ctx.stroke(Path(rect), with: .color(c), style: StrokeStyle(lineWidth: 1, dash: o.boxCrossing ? [6, 4] : []))
         }
-        if o.snapType > 0 {
+        if o.snapType > 0 && showsCursor {
             let p = o.snap.applying(m)
             let k: CGFloat = 7
             var s = Path()
@@ -214,7 +229,7 @@ struct CadCanvas: View {
             }
             ctx.stroke(s, with: .color(CadColors.snap), lineWidth: 2)
         }
-        if let c = o.cursor {
+        if showsCursor, let c = o.cursor {
             let p = c.applying(m)
             ctx.stroke(Path(ellipseIn: CGRect(x: p.x - 3.5, y: p.y - 3.5, width: 7, height: 7)), with: .color(CadColors.rubber), lineWidth: 1.5)
             if let label = o.label, !label.isEmpty {

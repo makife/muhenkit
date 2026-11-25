@@ -36,6 +36,18 @@ Platformlar arası eşdeğer dosyalar (bir özellik eklerken hepsini güncelle):
 - İlk nokta yazılarak: Windows komut satırında `x,y` (mutlak, dosyadaki koordinat) ya da `@dx,dy` (son konan noktaya göre);
   mobilde ipucu çubuğundaki "Nokta" düğmesi (Android ayrı X/Y alanlı pencere, iOS aynı sözdizimi).
 
+Görünüm alanları (AutoCAD gibi 2×2, dört platformda):
+- Tek görünüm ↔ dört görünüm: Windows Görünüm sekmesi "4 görünüm/Tek görünüm" + komut `VP`, Ctrl+R sonraki bölme; mobil/Apple üst
+  çubukta ızgara düğmesi (Apple'da da `VP`). Bölme köşesindeki düğme o bölmeyi tek ekrana büyütür. Bölme adları "Görünüm 1–4"
+  köşede küçük (Windows sol üst; mobilde sol alt, büyüt düğmesi sağ alt — üst köşeleri ipucu kartı/üst çubuk düğmesi örtüyor).
+- Dokunulan/tıklanan bölme etkin olur (mavi çerçeve); Sığdır, yakınlaştır, dışa aktarma "ekrandaki görünüm" etkin bölmeye.
+  Çizim tüm bölmelerde ortak; komut bir bölmede başlayıp ötekinde bitebilir. Bölme oranı ortadaki tutamakla sürüklenir.
+- Windows: `CadCanvas` bölmeleri (`ViewPane`) Win2D geometrisini paylaşır. Android: tek GLSurfaceView, bölme başına
+  glViewport+glScissor (`CadRenderer.panes`); dört görünüm üst çubuk/alt araçlar/sol ray dışındaki alana (`setContentInsets`).
+  Apple: `CadModel.view` etkin bölme, diğerleri `paneViews`; her bölme ayrı SwiftUI Canvas.
+- Proje meta'sı `viewports`: {quad, active, split:[fx,fy], views:[[cx,cy,zoom]|null ×4]} (mutlak koordinat).
+- İmleç (Windows/macOS): Seç aracında ok, diğer araçlarda artı.
+
 Tasarım: Android arayüzü esastır (mavi devre kartı ana sayfa, çizimde gizlenebilir üst çubuk + ipucu çubuğu +
 Çiz/Düzenle/Ekle/Ayarlar sekmeleri, geniş ekranda sol ray). iOS/macOS bununla birebir aynı olmalı.
 
@@ -48,7 +60,7 @@ Tasarım: Android arayüzü esastır (mavi devre kartı ana sayfa, çizimde gizl
   `dotnet publish` KULLANMA (.pri/.xbf atlıyor, uygulama çöker).
 - **iOS/macOS**: yerelde derlenemez (Mac yok) → yalnızca GitHub Actions.
 
-Windows test bayrakları: `MuhenKit.exe <dxf>` · `--projeler` · `--modul=<RouteId>`; ortam `MUHENKIT_SELFTEST=1|2|3|e|ea|ed|arc|step|f1|f2|f3|demo`
+Windows test bayrakları: `MuhenKit.exe <dxf>` · `--projeler` · `--modul=<RouteId>`; ortam `MUHENKIT_SELFTEST=1|2|3|e|ea|ed|arc|step|vp|f1|f2|f3|demo`
 (sonuç `%TEMP%\muhenkit_selftest.txt`, hata günlüğü `%TEMP%\muhenkit_log.txt`).
 
 ## CI (GitHub Actions, depo makife/muhenkit)

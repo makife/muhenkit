@@ -9,6 +9,10 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
@@ -93,6 +97,8 @@ fun CadScreen(request: CadRequest?, onExit: () -> Unit = {}) {
     var showExport by remember { mutableStateOf(false) }
     var toolCat by remember { mutableStateOf(ToolCat.EDIT) }
     var topBarHeight by remember { mutableStateOf(64.dp) }
+    /** Dar ekranda alttaki ipucu + araç çubuğunun yüksekliği (piksel): dört görünüm bunun üstüne yerleşir */
+    var bottomBarPx by remember { mutableStateOf(0) }
     var flyout by remember { mutableStateOf<ToolCat?>(null) }
     // üst çubuk gizli mi (tercih saklanır)
     val uiPrefs = remember { context.getSharedPreferences("ui", android.content.Context.MODE_PRIVATE) }
@@ -220,6 +226,16 @@ fun CadScreen(request: CadRequest?, onExit: () -> Unit = {}) {
             modifier = Modifier.fillMaxSize(),
             onRelease = { it.onPause() },
         )
+        // dört görünüm, araç çubuklarının arasında kalan serbest alana yerleşir
+        val dens = LocalDensity.current
+        val safe = WindowInsets.safeDrawing
+        val lay = androidx.compose.ui.platform.LocalLayoutDirection.current
+        val topPx = if (topHidden) WindowInsets.statusBars.getTop(dens) else with(dens) { topBarHeight.roundToPx() }
+        val leftPx = safe.getLeft(dens, lay) + if (wide) with(dens) { RAIL_W.roundToPx() } else 0
+        val rightPx = safe.getRight(dens, lay)
+        val botPx = if (wide) WindowInsets.navigationBars.getBottom(dens) else bottomBarPx
+        LaunchedEffect(topPx, leftPx, rightPx, botPx, ed.scene) { ed.glView?.setContentInsets(leftPx, topPx, rightPx, botPx) }
+        PaneChrome(ed)
 
         AnimatedVisibility(
             visible = !topHidden,
@@ -282,8 +298,10 @@ fun CadScreen(request: CadRequest?, onExit: () -> Unit = {}) {
             } else {
                 Column(Modifier.align(Alignment.BottomCenter).fillMaxWidth()) {
                     SnackbarHost(snackbar, Modifier.align(Alignment.CenterHorizontally))
-                    HintBar(ed, onNumber = { numberAsk = ed.tool }, onEditText = { textEdit = ed.selectedText() }, onSymbols = onSyms)
-                    BottomTools(ed, toolCat, { toolCat = it }, onProps, onSyms, onTbls)
+                    Column(Modifier.fillMaxWidth().onGloballyPositioned { bottomBarPx = it.size.height }) {
+                        HintBar(ed, onNumber = { numberAsk = ed.tool }, onEditText = { textEdit = ed.selectedText() }, onSymbols = onSyms)
+                        BottomTools(ed, toolCat, { toolCat = it }, onProps, onSyms, onTbls)
+                    }
                 }
             }
         } else {
@@ -512,6 +530,11 @@ private fun TopBar(
             if (ed.busy) CircularProgressIndicator(Modifier.size(18.dp).padding(end = 4.dp), strokeWidth = 2.dp)
             if (scene != null) {
                 IconButton(onClick = onFit) { Icon(Icons.Outlined.ZoomOutMap, "Sığdır") }
+                ed.layoutTick
+                val quad = ed.glView?.quad == true
+                IconButton(onClick = { ed.toggleQuad() }) {
+                    Icon(if (quad) Icons.Outlined.CropSquare else Icons.Outlined.GridView, if (quad) "Tek görünüm" else "4 görünüm")
+                }
                 IconButton(onClick = onLayers) { Icon(Icons.Outlined.Layers, "Katmanlar") }
                 IconButton(onClick = onSave, enabled = ed.dirty) { Icon(Icons.Outlined.Save, "Kaydet") }
             }
@@ -1425,4 +1448,62 @@ private fun LayerSheet(
             }
         }
     }
+}
+
+
+/** Bölme adları (köşede küçük yazı) */
+val PANE_NAMES = listOf("Görünüm 1", "Görünüm 2", "Görünüm 3", "Görünüm 4")
+
+/**
+ * Dört görünümde bölme süsleri: etkin bölmede mavi çerçeve, sol alt köşede ad, sağ alt köşede "tek ekrana büyüt"
+ * düğmesi ve bölmelerin kesiştiği yerde sürüklenebilir oran tutamağı. Dokunmayı yalnız düğme ve tutamak alır;
+ * gerisi alttaki çizim yüzeyine geçer.
+ */
+@Composable
+private fun PaneChrome(ed: CadEditor) {
+    ed.layoutTick // düzen değişince yeniden yerleş
+    val g = ed.glView ?: return
+    if (!g.quad || ed.scene == null) return
+    val d = LocalDensity.current
+    for (i in 0 until 4) {
+        val r = g.paneRect(i)
+        if (r.width() <= 0 || r.height() <= 0) continue
+        val act = i == g.active
+        Box(
+            Modifier.offset { IntOffset(r.left, r.top) }
+                .size(with(d) { r.width().toDp() }, with(d) { r.height().toDp() })
+                .then(if (act) Modifier.border(2.dp, Color(0xFF4F8BF7)) else Modifier),
+        ) {
+            Text(
+                PANE_NAMES[i], fontSize = 11.sp, maxLines = 1,
+                color = if (act) Color(0xFF7FA8F8) else Color(0xC09FB6DC),
+                fontWeight = if (act) FontWeight.SemiBold else FontWeight.Normal,
+                modifier = Modifier.align(Alignment.BottomStart).padding(5.dp).clip(RoundedCornerShape(4.dp))
+                    .background(Color(0xB00B0E10)).padding(horizontal = 6.dp, vertical = 2.dp),
+            )
+            Box(
+                Modifier.align(Alignment.BottomEnd).padding(4.dp).size(32.dp).clip(RoundedCornerShape(6.dp))
+                    .background(Color(0xB0141719)).clickable { ed.paneButton(i) },
+                contentAlignment = Alignment.Center,
+            ) { Icon(Icons.Outlined.OpenInFull, "${PANE_NAMES[i]}: tek ekrana büyüt", Modifier.size(16.dp), tint = Color(0xFF9FB6DC)) }
+        }
+    }
+    // oran tutamağı: ortadaki daireyi sürükle
+    val a = g.quadArea()
+    val cx = a.left + (a.width() * g.splitX).toInt()
+    val cy = a.top + (a.height() * g.splitY).toInt()
+    val hs = with(d) { 30.dp.roundToPx() }
+    Box(
+        Modifier.offset { IntOffset(cx - hs / 2, cy - hs / 2) }.size(30.dp).clip(CircleShape).background(Color(0xE0141719))
+            .border(1.dp, Color(0xFF4F8BF7), CircleShape)
+            .pointerInput(Unit) {
+                detectDragGestures { ch, drag ->
+                    ch.consume()
+                    val gv = ed.glView ?: return@detectDragGestures
+                    val ar = gv.quadArea()
+                    if (ar.width() > 0 && ar.height() > 0) gv.setSplit(gv.splitX + drag.x / ar.width(), gv.splitY + drag.y / ar.height())
+                }
+            },
+        contentAlignment = Alignment.Center,
+    ) { Icon(Icons.Outlined.OpenWith, "Bölme oranı", Modifier.size(16.dp), tint = Color(0xFF9FB6DC)) }
 }

@@ -16,7 +16,44 @@ struct ExportFile: FileDocument {
 final class CadModel: ObservableObject {
     let editor = CadEditor()
     @Published var project: ProjectMeta?
+    /// Etkin bölmenin görünümü (tek görünümde tek görünüm)
     @Published var view = ViewState(cx: 0, cy: 0, zoom: 1)
+    /// Dört görünüm (AutoCAD görünüm alanları): etkin olmayan bölmelerin görünümleri burada, etkininki `view`'da
+    @Published var quad = false
+    @Published private(set) var active = 0
+    @Published var paneViews: [ViewState?] = [nil, nil, nil, nil]
+    @Published var split: CGPoint = CGPoint(x: 0.5, y: 0.5)
+    /// Bölmelerin ekrandaki boyutları (sığdırma ve dışa aktarma için)
+    var paneSizes: [CGSize] = Array(repeating: .zero, count: 4)
+
+    /// Bölme görünümüne bağlama: etkin bölme `view`, diğerleri `paneViews`
+    func paneBinding(_ i: Int) -> Binding<ViewState> {
+        Binding(
+            get: { [unowned self] in i == self.active ? self.view : (self.paneViews[i] ?? self.view) },
+            set: { [unowned self] v in if i == self.active { self.view = v } else { self.paneViews[i] = v } })
+    }
+
+    func activate(_ i: Int) {
+        guard i != active, (0..<4).contains(i) else { return }
+        paneViews[active] = view
+        active = i
+        if let v = paneViews[i] { view = v } else if let s = editor.scene, paneSizes[i].width > 0 { view = CadCanvas.fit(s, in: paneSizes[i]) }
+        paneViews[i] = nil
+    }
+
+    /// Dört görünüm ↔ tek görünüm (etkin bölme büyür)
+    func toggleQuad() { quad.toggle() }
+
+    /// Bölme köşe düğmesi: dört görünümde o bölmeyi büyüt, tek görünümde dörde böl
+    func paneButton(_ i: Int) {
+        if quad { activate(i); quad = false } else { quad = true }
+    }
+
+    /// Hiç görünümü olmayan bölmeleri sığdır (dörde bölününce)
+    func fitMissing() {
+        guard let s = editor.scene else { return }
+        for i in 0..<4 where i != active && paneViews[i] == nil && paneSizes[i].width > 0 { paneViews[i] = CadCanvas.fit(s, in: paneSizes[i]) }
+    }
     @Published var hidden: Set<Int> = []
     @Published var error: String?
     @Published var loading = false
@@ -61,6 +98,14 @@ final class CadModel: ObservableObject {
             ProjectStore.lastProject = id
             let s = d.scene!
             hidden = []
+            let vp = meta.viewports
+            active = min(max(vp?.active ?? 0, 0), 3)
+            quad = vp?.quad ?? false
+            split = CGPoint(x: vp?.split.first ?? 0.5, y: vp?.split.last ?? 0.5)
+            paneViews = (0..<4).map { i in
+                guard i != active, let vv = vp?.views, i < vv.count, let v = vv[i], v.count == 3, v[2] > 0 else { return nil }
+                return ViewState(cx: v[0] - d.originX, cy: v[1] - d.originY, zoom: v[2])
+            }
             if let v = meta.view, v.count == 3, let h = meta.hidden {
                 view = ViewState(cx: v[0] - d.originX, cy: v[1] - d.originY, zoom: v[2])
                 hidden = Set(h.filter { $0 < s.layers.count })
@@ -88,6 +133,10 @@ final class CadModel: ObservableObject {
             ProjectStore.writeThumb(m.id, png)
         }
         m.view = [view.cx + d.originX, view.cy + d.originY, view.zoom]
+        m.viewports = Viewports(quad: quad, active: active, split: [split.x, split.y], views: (0..<4).map { i in
+            let v = i == active ? view : paneViews[i]
+            return v.map { [$0.cx + d.originX, $0.cy + d.originY, $0.zoom] }
+        })
         m.hidden = Array(hidden).sorted()
         if let u = d.scene?.units, [4, 5, 6].contains(u) { m.units = u }
         m.step = editor.stepOn ? editor.lengthStep : -editor.lengthStep
@@ -357,17 +406,86 @@ private struct EditorBody: View {
 
     private static let railW: CGFloat = 64
     private static let sideW: CGFloat = 92
+    @State private var topBarH: CGFloat = 56
+    @State private var bottomH: CGFloat = 0
+
+    /// Bölme adları (köşede küçük yazı)
+    static let paneNames = ["Görünüm 1", "Görünüm 2", "Görünüm 3", "Görünüm 4"]
+
+    /// 2×2 görünüm alanları + sürüklenebilir oran tutamağı
+    private func quadPanes(_ s: CadScene) -> some View {
+        GeometryReader { g in
+            let w = g.size.width, h = g.size.height
+            let mx = (w * model.split.x).rounded(), my = (h * model.split.y).rounded()
+            let rects = [
+                CGRect(x: 0, y: 0, width: mx - 1, height: my - 1),
+                CGRect(x: mx + 1, y: 0, width: w - mx - 1, height: my - 1),
+                CGRect(x: 0, y: my + 1, width: mx - 1, height: h - my - 1),
+                CGRect(x: mx + 1, y: my + 1, width: w - mx - 1, height: h - my - 1),
+            ]
+            ZStack(alignment: .topLeading) {
+                Color(hex: 0x2A2F33)
+                ForEach(0..<4, id: \.self) { i in
+                    pane(s, i, rects[i].size).frame(width: max(rects[i].width, 1), height: max(rects[i].height, 1))
+                        .offset(x: rects[i].minX, y: rects[i].minY)
+                }
+                Image(systemName: "arrow.up.and.down.and.arrow.left.and.right")
+                    .font(.system(size: 12, weight: .semibold)).foregroundStyle(Color(hex: 0x9FB6DC))
+                    .frame(width: 30, height: 30).background(Color(hex: 0x141719, alpha: 0.88), in: Circle())
+                    .overlay(Circle().stroke(Color(hex: 0x4F8BF7), lineWidth: 1))
+                    .offset(x: mx - 15, y: my - 15)
+                    .gesture(DragGesture(coordinateSpace: .named("quad")).onChanged { v in
+                        model.split = CGPoint(x: min(max(v.location.x / max(w, 1), 0.15), 0.85), y: min(max(v.location.y / max(h, 1), 0.15), 0.85))
+                    })
+            }
+            .coordinateSpace(name: "quad")
+            .onAppear { model.fitMissing() }
+        }
+    }
+
+    private func pane(_ s: CadScene, _ i: Int, _ size: CGSize) -> some View {
+        let act = i == model.active
+        return CadCanvas(scene: s, view: model.paneBinding(i), hidden: model.hidden, revision: editor.revision, overlay: editor.overlay,
+                         editor: editor, onKey: key, onActivate: { model.activate(i); canvasSize = model.paneSizes[i] }, showsCursor: act)
+            .overlay(alignment: .bottomLeading) {
+                Text(Self.paneNames[i]).font(.system(size: 11, weight: act ? .semibold : .regular))
+                    .foregroundStyle(act ? Color(hex: 0x7FA8F8) : Color(hex: 0x9FB6DC, alpha: 0.75))
+                    .padding(.horizontal, 6).padding(.vertical, 2)
+                    .background(Color(hex: 0x0B0E10, alpha: 0.7), in: RoundedRectangle(cornerRadius: 4))
+                    .padding(5).allowsHitTesting(false)
+            }
+            .overlay(alignment: .bottomTrailing) {
+                Button { model.paneButton(i) } label: {
+                    Image(systemName: "arrow.up.left.and.arrow.down.right").font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(Color(hex: 0x9FB6DC)).frame(width: 30, height: 30)
+                        .background(Color(hex: 0x141719, alpha: 0.7), in: RoundedRectangle(cornerRadius: 6))
+                }
+                .buttonStyle(.plain).padding(4).help("\(Self.paneNames[i]): tek ekrana büyüt")
+            }
+            .overlay { if act { Rectangle().stroke(Color(hex: 0x4F8BF7), lineWidth: 2).allowsHitTesting(false) } }
+            .onAppear { model.paneSizes[i] = size; if act { canvasSize = size }; model.fitMissing() }
+            .onChange(of: size) { model.paneSizes[i] = $0; if i == model.active { canvasSize = $0 } }
+    }
 
     var body: some View {
         GeometryReader { geo in
             let wide = geo.size.width >= 600
             ZStack(alignment: .top) {
                 if let s = editor.scene {
-                    CadCanvas(scene: s, view: $model.view, hidden: model.hidden, revision: editor.revision, overlay: editor.overlay,
-                              editor: editor, onKey: key)
-                        .ignoresSafeArea()
-                        .onAppear { canvasSize = geo.size; fitIfNeeded(s) }
-                        .onChange(of: geo.size) { canvasSize = $0; fitIfNeeded(s) }
+                    if model.quad {
+                        // dört görünüm: araç çubuklarının arasında kalan alana
+                        CadColors.background.ignoresSafeArea()
+                        quadPanes(s)
+                            .padding(.top, topHidden ? 0 : topBarH)
+                            .padding(.bottom, wide ? 0 : bottomH)
+                            .padding(.leading, wide ? Self.railW : 0)
+                    } else {
+                        CadCanvas(scene: s, view: $model.view, hidden: model.hidden, revision: editor.revision, overlay: editor.overlay,
+                                  editor: editor, onKey: key)
+                            .ignoresSafeArea()
+                            .onAppear { canvasSize = geo.size; model.paneSizes[model.active] = geo.size; fitIfNeeded(s) }
+                            .onChange(of: geo.size) { canvasSize = $0; model.paneSizes[model.active] = $0; fitIfNeeded(s) }
+                    }
                 } else {
                     CadColors.background.ignoresSafeArea()
                     if model.loading {
@@ -379,7 +497,7 @@ private struct EditorBody: View {
                 }
 
                 VStack(spacing: 0) {
-                    if !topHidden { topBar } else { Spacer().frame(height: 0) }
+                    if !topHidden { topBar.readHeight { topBarH = $0 } } else { Spacer().frame(height: 0) }
                     if editor.scene != nil {
                         if wide {
                             HStack(alignment: .top, spacing: 0) {
@@ -394,8 +512,11 @@ private struct EditorBody: View {
                         } else {
                             Spacer()
                             toastView
-                            hintBar
-                            bottomTools
+                            VStack(spacing: 0) {
+                                hintBar
+                                bottomTools
+                            }
+                            .readHeight { bottomH = $0 }
                         }
                     } else {
                         Spacer()
@@ -416,7 +537,10 @@ private struct EditorBody: View {
             }
         }
         .background(CadColors.background.ignoresSafeArea())
-        .onAppear { editor.onFit = { if let s = editor.scene { model.view = CadCanvas.fit(s, in: canvasSize) } } }
+        .onAppear {
+            editor.onFit = { if let s = editor.scene { model.view = CadCanvas.fit(s, in: canvasSize) } }
+            editor.onToggleQuad = { model.toggleQuad() }
+        }
         .onChange(of: editor.message) { m in
             guard let m else { return }
             toast = m
@@ -473,6 +597,7 @@ private struct EditorBody: View {
             if editor.busy { ProgressView().controlSize(.small).padding(.trailing, 4) }
             if let s = editor.scene {
                 iconButton("arrow.up.left.and.arrow.down.right", "Sığdır") { withAnimation(.easeOut(duration: 0.25)) { model.view = CadCanvas.fit(s, in: canvasSize) } }
+                iconButton(model.quad ? "square" : "square.grid.2x2", model.quad ? "Tek görünüm" : "4 görünüm") { model.toggleQuad() }
                 iconButton("square.3.layers.3d", "Katmanlar") { showLayers = true }
                 iconButton("square.and.arrow.down", "Kaydet", enabled: editor.dirty || editor.undoCount > 0, action: onSave)
             }
@@ -1074,5 +1199,15 @@ private struct CountsSheet: View {
         #if os(macOS)
         .frame(minWidth: 420, minHeight: 460)
         #endif
+    }
+}
+
+
+extension View {
+    /// Görünümün yüksekliğini bildirir (dört görünümün araç çubukları arasına yerleşmesi için)
+    func readHeight(_ f: @escaping (CGFloat) -> Void) -> some View {
+        background(GeometryReader { g in
+            Color.clear.onAppear { f(g.size.height) }.onChange(of: g.size.height) { f($0) }
+        })
     }
 }
