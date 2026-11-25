@@ -93,6 +93,11 @@ public sealed class CadEditor : ICanvasInput
     private string? _trackLabel;
     private double _tol = 1;
     public bool Tracking { get; set; } = true;
+    /// <summary>Uzunluk adımı: serbest çizimde uzunluk/yarıçap/en-boy bu adıma yuvarlanır (çizim biriminde)</summary>
+    public bool StepOn { get; set; }
+    public double LengthStep { get; set; } = 1;
+    /// <summary>En son verilen nokta ("@dx,dy" buna göre)</summary>
+    private (double X, double Y)? _lastPt;
     private readonly List<(double X, double Y)> _pline = new();
     private int? _offsetTarget;
     private (int Kind, double X, double Y) _press;
@@ -468,7 +473,32 @@ public sealed class CadEditor : ICanvasInput
     };
 
     /// <summary>Orto, 15° kutupsal ve hizalama izleri (yatay/dikey/paralel/dik kılavuzlar, eşit uzunluk)</summary>
-    private (int Kind, double X, double Y) Constrain((int Kind, double X, double Y) p)
+    private (int Kind, double X, double Y) Constrain((int Kind, double X, double Y) p) => Step(ConstrainCore(p));
+
+    /// <summary>Uzunluk adımı: başlangıçtan geçen doğrultu korunur, uzaklık adıma yuvarlanır (nesne yakalama ve hizalama izi önceliklidir)</summary>
+    private (int Kind, double X, double Y) Step((int Kind, double X, double Y) p)
+    {
+        double s = LengthStep;
+        if (!StepOn || s <= 0 || p.Kind > 0) return p;
+        if (_trackLabel != null && !_trackLabel.StartsWith("Kutupsal") && _trackLabel is not ("Paralel" or "Dik")) return p;
+        double R(double v) => Math.Round(v / s) * s;
+        if (Tool == CadTool.Rect)
+            return _anchor is { } r0 ? (0, r0.X + R(p.X - r0.X), r0.Y + R(p.Y - r0.Y)) : p;
+        (double X, double Y)? f = Tool switch
+        {
+            CadTool.Line or CadTool.PLine or CadTool.Move or CadTool.Copy => From,
+            CadTool.Circle => _anchor,
+            CadTool.Arc when _arcStart == null => _anchor,
+            _ => null,
+        };
+        if (f is not { } o) return p;
+        double dx = p.X - o.X, dy = p.Y - o.Y, l = Math.Sqrt(dx * dx + dy * dy);
+        if (l < 1e-12) return p;
+        double n = Math.Max(s, R(l));
+        return (0, o.X + dx / l * n, o.Y + dy / l * n);
+    }
+
+    private (int Kind, double X, double Y) ConstrainCore((int Kind, double X, double Y) p)
     {
         _guides = null;
         _trackLabel = null;
@@ -727,6 +757,7 @@ public sealed class CadEditor : ICanvasInput
     private void Point((double X, double Y) p, double tol)
     {
         var d = Doc!;
+        if (Tool != CadTool.Select) _lastPt = p;
         // tıklanan her nokta çizim bitene kadar hizalama referansı olur
         if (Tracking && Tool is not (CadTool.Select or CadTool.Offset or CadTool.Text))
         {
@@ -1257,7 +1288,9 @@ public sealed class CadEditor : ICanvasInput
                 return true;
             }
             // ilk nokta: mutlak koordinat (durum çubuğundakiyle aynı)
-            Point(rel ? (_hover.X + x, _hover.Y + y) : (x - d.OriginX, y - d.OriginY), tol);
+            // ilk nokta: "@dx,dy" son verilen noktaya (yoksa imlece) göre
+            var b = _lastPt ?? _hover;
+            Point(rel ? (b.X + x, b.Y + y) : (x - d.OriginX, y - d.OriginY), tol);
             return true;
         }
         if (parts.Length != 1 || !Num(parts[0], out var v)) return false;

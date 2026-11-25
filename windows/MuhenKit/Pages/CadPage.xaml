@@ -121,6 +121,7 @@
                         <x:String>cm</x:String>
                         <x:String>m</x:String>
                     </ComboBox>
+                    <NumberBox x:Name="StepBox" Header="Uzunluk adımı (ADIM açıkken)" SpinButtonPlacementMode="Compact" Minimum="0.001" SmallChange="1" ValueChanged="OnStepValue"/>
                     <ComboBox x:Name="ActiveLayer" Header="Etkin katman (yeni nesneler)" HorizontalAlignment="Stretch" SelectionChanged="OnActiveLayer"/>
                     <NumberBox x:Name="TextHeightBox" Header="Yazı yüksekliği" SpinButtonPlacementMode="Compact" Minimum="0.01" SmallChange="0.5" ValueChanged="OnTextHeight"/>
                     <NumberBox x:Name="OffsetBox" Header="Öteleme uzaklığı" SpinButtonPlacementMode="Compact" Minimum="0.001" SmallChange="1" ValueChanged="OnOffsetDist"/>
@@ -177,6 +178,7 @@
                 <ToggleButton x:Name="SnapToggle" Content="YAKALA" Style="{StaticResource StatusToggle}" IsChecked="True" Click="OnModeToggle" ToolTipService.ToolTip="Nesne yakalama: uç, orta, merkez, ekleme (F3)"/>
                 <ToggleButton x:Name="OrthoToggle" Content="ORTO" Style="{StaticResource StatusToggle}" Click="OnModeToggle" ToolTipService.ToolTip="Yalnızca yatay/dikey (F8)"/>
                 <ToggleButton x:Name="TrackToggle" Content="İZ" Style="{StaticResource StatusToggle}" IsChecked="True" Click="OnModeToggle" ToolTipService.ToolTip="Hizalama izleri: yakalama noktalarından yatay/dikey, referans çizgiye paralel/dik kesikli kılavuzlar ve eşit uzunluk (F11)"/>
+                <ToggleButton x:Name="StepToggle" Content="ADIM" Style="{StaticResource StatusToggle}" Click="OnModeToggle" ToolTipService.ToolTip="Uzunluk adımı: çizerken uzunluk, yarıçap ve en/boy adımın katlarına yuvarlanır (F9). Adım: Çizim ayarları"/>
                 <ToggleButton x:Name="PolarToggle" Content="AÇI 15°" Style="{StaticResource StatusToggle}" IsChecked="True" Click="OnModeToggle" ToolTipService.ToolTip="15°'nin katlarına yapış (F10)"/>
             </StackPanel>
             <TextBlock x:Name="InfoText" Grid.Column="3" Foreground="#7F93B3" VerticalAlignment="Center" FontSize="12"/>

@@ -88,6 +88,18 @@ class CadEditor(private val context: Context, private val scope: CoroutineScope)
     var angleSnap by mutableStateOf(true)
     /** Hizalama izleri: geçilen yakalama noktalarından yatay/dikey, referans çizgiye paralel/dik kesikli kılavuzlar */
     var tracking by mutableStateOf(true)
+    /** Uzunluk adımı: serbest çizimde uzunluk/yarıçap/en-boy bu adıma yuvarlanır (çizim biriminde) */
+    var stepOn by mutableStateOf(false); private set
+    var lengthStep by mutableStateOf(1.0); private set
+
+    fun setStep(on: Boolean, v: Double) {
+        if (v > 0) lengthStep = v
+        stepOn = on
+        metaChanged = true
+    }
+
+    /** En son konan nokta (göreli giriş buna göre) */
+    var lastPt by mutableStateOf<Pair<Double, Double>?>(null); private set
     /** Ölçü: ilk ve ikinci nokta */
     var dimP1 by mutableStateOf<Pair<Double, Double>?>(null); private set
     var dimP2 by mutableStateOf<Pair<Double, Double>?>(null); private set
@@ -204,6 +216,9 @@ class CadEditor(private val context: Context, private val scope: CoroutineScope)
                 editsSinceSave = 0
                 metaChanged = false
                 ProjectStore.setLast(context, m.id)
+                lengthStep = if (m.step == 0.0) 1.0 else abs(m.step)
+                stepOn = m.step > 0
+                lastPt = null
                 val s = d.scene
                 scene = s
                 hidden = if (m.view != null) m.hidden.filter { it < s.layers.size }.toSet()
@@ -259,6 +274,7 @@ class CadEditor(private val context: Context, private val scope: CoroutineScope)
         val s = scene
         val hid = hidden
         val v = glView?.renderer?.view
+        val step = if (stepOn) lengthStep else -lengthStep
         val view = v?.let { doubleArrayOf(it.cx + d.originX, it.cy + d.originY, it.zoom) } ?: m.view
         val ctx = context
         if (edits == 0 && !changed && !final) return
@@ -267,7 +283,7 @@ class CadEditor(private val context: Context, private val scope: CoroutineScope)
                 if (edits > 0) ProjectStore.writeDrawing(ctx, m.id, d.saveCopy())
                 val nm = m.copy(
                     modified = if (edits > 0) System.currentTimeMillis() else m.modified,
-                    dirtyToSource = d.dirty, view = view, hidden = hid, units = s?.units ?: m.units,
+                    dirtyToSource = d.dirty, view = view, hidden = hid, units = s?.units ?: m.units, step = step,
                 )
                 ProjectStore.saveMeta(ctx, nm)
                 if (s != null && (edits > 0 || !ProjectStore.thumb(ctx, m.id).exists())) ProjectStore.writeThumb(ctx, m.id, s, hid)
@@ -983,6 +999,7 @@ class CadEditor(private val context: Context, private val scope: CoroutineScope)
     /** Çizim aracında iki nokta belli: nesneyi ekle. */
     /** Konan nokta çizim bitene kadar hizalama referansı olur */
     private fun addRef(p: Pair<Double, Double>) {
+        lastPt = p
         if (!tracking) return
         acq.removeAll { abs(it.first - p.first) + abs(it.second - p.second) < 1e-9 }
         acq.add(p)
@@ -1030,6 +1047,19 @@ class CadEditor(private val context: Context, private val scope: CoroutineScope)
     }
 
     /** Sayısal giriş: çizgi/çoklu çizgi (uzunluk, açı), daire (yarıçap), dikdörtgen (genişlik, yükseklik). */
+    /** İlk noktayı yazarak ver: mutlak koordinat (dosyadaki gibi) ya da [rel] ise son noktaya göre ΔX, ΔY */
+    fun firstPoint(x: Double, y: Double, rel: Boolean) {
+        val d = doc ?: return
+        if (tool !in drawTools || lineStart != null) return
+        val base = lastPt
+        val p = if (rel && base != null) (base.first + x) to (base.second + y) else (x - d.originX) to (y - d.originY)
+        lineStart = p
+        addRef(p)
+        liveText = null
+        overlay(cursor = p)
+        glView?.reveal(p.first, p.second)
+    }
+
     fun numericDraw(v1: Double, v2: Double) {
         val a = lineStart ?: return
         when (tool) {
@@ -1175,12 +1205,30 @@ class CadEditor(private val context: Context, private val scope: CoroutineScope)
         }
 
         private fun constrain(p: Triple<Int, Double, Double>, b: Triple<Int, Double, Double>, tol: Double): Triple<Int, Double, Double> = when (tool) {
-            in drawTools -> track(p, if (tool == CadTool.CIRCLE || tool == CadTool.ARC) null else lineStart, tol, tool != CadTool.RECT)
-            CadTool.MOVE, CadTool.COPY, CadTool.MIRROR -> track(p, b.second to b.third, tol, true)
+            in drawTools -> stepped(track(p, if (tool == CadTool.CIRCLE || tool == CadTool.ARC) null else lineStart, tol, tool != CadTool.RECT), lineStart)
+            CadTool.MOVE, CadTool.COPY -> stepped(track(p, b.second to b.third, tol, true), b.second to b.third)
+            CadTool.MIRROR -> track(p, b.second to b.third, tol, true)
             CadTool.MEASURE -> track(p, measureStart, tol, true)
             CadTool.DIMENSION -> track(p, if (dimP2 == null) dimP1 else null, tol, true)
             CadTool.SYMBOL, CadTool.TEXT -> track(p, null, tol, false)
             else -> { guides = null; trackLabel = null; p }
+        }
+
+        /** Uzunluk adımı: [o]'dan geçen doğrultu korunur, uzaklık adıma yuvarlanır (yakalama ve hizalama izi öncelikli) */
+        private fun stepped(p: Triple<Int, Double, Double>, o: Pair<Double, Double>?): Triple<Int, Double, Double> {
+            val s = lengthStep
+            if (!stepOn || s <= 0 || p.first > 0 || o == null) return p
+            val tl = trackLabel
+            if (tl != null && !tl.startsWith("Kutupsal") && tl != "Paralel" && tl != "Dik") return p
+            if (tool == CadTool.ARC && arcStart != null) return p
+            fun r(v: Double) = Math.round(v / s) * s
+            if (tool == CadTool.RECT) return Triple(0, o.first + r(p.second - o.first), o.second + r(p.third - o.second))
+            val dx = p.second - o.first
+            val dy = p.third - o.second
+            val l = kotlin.math.hypot(dx, dy)
+            if (l < 1e-12) return p
+            val n = maxOf(s, r(l))
+            return Triple(0, o.first + dx / l * n, o.second + dy / l * n)
         }
 
         private fun withTrack(t: String?): String? = trackLabel?.let { tl -> if (t == null) tl else "$tl · $t" } ?: t

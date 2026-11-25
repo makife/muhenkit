@@ -86,6 +86,8 @@ fun CadScreen(request: CadRequest?, onExit: () -> Unit = {}) {
     var showProps by remember { mutableStateOf(false) }
     var showUnits by remember { mutableStateOf(false) }
     onUnits = { showUnits = true }
+    var showStep by remember { mutableStateOf(false) }
+    onStep = { showStep = true }
     var showSymbols by remember { mutableStateOf(false) }
     var showCounts by remember { mutableStateOf(false) }
     var showExport by remember { mutableStateOf(false) }
@@ -371,6 +373,8 @@ fun CadScreen(request: CadRequest?, onExit: () -> Unit = {}) {
         )
     }
 
+    if (showStep) StepDialog(ed.stepOn, ed.lengthStep, ed.unitLabel, onDismiss = { showStep = false }) { on, v -> showStep = false; ed.setStep(on, v) }
+
     if (showProps && s != null) {
         ModalBottomSheet(onDismissRequest = { showProps = false }) {
             PropsSheet(s, ed.selection.size, ed.selectedGeometry(), ed.unitLabel, onGeom = { id, v -> ed.setGeometry(id, v) }, onLayer = {
@@ -385,6 +389,13 @@ fun CadScreen(request: CadRequest?, onExit: () -> Unit = {}) {
 
     numberAsk?.let { t ->
         val rotate = t == CadTool.ROTATE
+        if (ed.lineStart == null && t in listOf(CadTool.LINE, CadTool.PLINE, CadTool.CIRCLE, CadTool.ARC, CadTool.RECT)) {
+            PointDialog(
+                title = when (t) { CadTool.CIRCLE, CadTool.ARC -> "Merkez noktası"; CadTool.RECT -> "İlk köşe"; else -> "Başlangıç noktası" },
+                hasLast = ed.lastPt != null, onDismiss = { numberAsk = null },
+            ) { x, y, rel -> numberAsk = null; ed.firstPoint(x, y, rel) }
+            return@let
+        }
         when (t) {
             CadTool.SYMBOL -> NumberDialog(
                 title = "Sembol ölçeği", label = "Çarpan (1 = örnek projedeki boy)",
@@ -589,7 +600,7 @@ private fun HintBar(ed: CadEditor, onNumber: () -> Unit, onEditText: () -> Unit,
     // yalnız yol gösteren (canlı değer ya da düğme içermeyen) yazılar kendiliğinden küçülür
     val selectHint = ed.tool == CadTool.SELECT && ed.selection.isEmpty()
     val generic = (text == ed.tool.hint || selectHint || (pivotTool && ed.pivot == null)) &&
-        ed.tool != CadTool.SYMBOL && ed.tool != CadTool.OFFSET && ed.tool != CadTool.MIRROR
+        ed.tool != CadTool.SYMBOL && ed.tool != CadTool.OFFSET && ed.tool != CadTool.MIRROR && !drawTool
     var collapsed by remember(text) { mutableStateOf(false) }
     LaunchedEffect(text, collapsed) {
         if (generic && !collapsed) {
@@ -613,7 +624,7 @@ private fun HintBar(ed: CadEditor, onNumber: () -> Unit, onEditText: () -> Unit,
         Text(text, style = MaterialTheme.typography.bodySmall, color = Color.White, modifier = Modifier.padding(top = 10.dp, bottom = 10.dp, end = 8.dp))
         // bağlam düğmeleri: dar ekranda yazıyı ezmesin diye ayrı, kaydırılabilir satırda
         Row(Modifier.horizontalScroll(rememberScrollState()), verticalAlignment = Alignment.CenterVertically) {
-        if (drawTool && ed.lineStart != null) TextButton(onClick = onNumber) { Text("Değer") }
+        if (drawTool) TextButton(onClick = onNumber) { Text(if (ed.lineStart == null) "Nokta" else "Değer") }
         if ((ed.tool == CadTool.LINE || ed.tool == CadTool.PLINE) && ed.lineStart != null) TextButton(onClick = ed::finishLine) { Text("Bitir") }
         if (ed.tool == CadTool.PLINE && ed.plinePts.size >= 3) TextButton(onClick = { ed.finishPolyline(true) }) { Text("Kapat") }
         if (ed.tool == CadTool.OFFSET) TextButton(onClick = onNumber) { Text("Mesafe") }
@@ -671,6 +682,7 @@ enum class ToolCat(val label: String, val icon: ImageVector) {
 private class ToolItem(val icon: ImageVector, val label: String, val active: Boolean, val enabled: Boolean = true, val onClick: () -> Unit)
 
 private var onUnits: () -> Unit = {}
+private var onStep: () -> Unit = {}
 
 private fun toolsOf(cat: ToolCat, ed: CadEditor, onProps: () -> Unit, onSymbols: () -> Unit, onTables: () -> Unit): List<ToolItem> {
     val sel = ed.selection.isNotEmpty()
@@ -710,6 +722,7 @@ private fun toolsOf(cat: ToolCat, ed: CadEditor, onProps: () -> Unit, onSymbols:
             ToolItem(Icons.Outlined.Add, "Orto", ed.ortho) { ed.ortho = !ed.ortho },
             ToolItem(Icons.Outlined.LinearScale, "İz", ed.tracking) { ed.tracking = !ed.tracking },
             ToolItem(Icons.Outlined.Straighten, "Birim: " + ed.unitLabel.ifEmpty { "?" }, false, ed.scene != null && free) { onUnits() },
+            ToolItem(Icons.Outlined.Pin, if (ed.stepOn) "Adım " + trimNum(ed.lengthStep) else "Adım", ed.stepOn, ed.scene != null) { onStep() },
         )
     }
 }
@@ -1107,6 +1120,76 @@ private fun NumberDialog2(
         },
         confirmButton = { TextButton(enabled = x != null && y != null, onClick = { onOk(x!!, y!!) }) { Text("Uygula") } },
         dismissButton = { TextButton(onClick = onDismiss) { Text("İptal") } },
+    )
+}
+
+/** İlk noktayı yazarak verme: mutlak X, Y ya da son noktaya göre ΔX, ΔY */
+@Composable
+private fun PointDialog(title: String, hasLast: Boolean, onDismiss: () -> Unit, onOk: (Double, Double, Boolean) -> Unit) {
+    var a by remember { mutableStateOf("") }
+    var b by remember { mutableStateOf("") }
+    var rel by remember { mutableStateOf(hasLast) }
+    val x = a.replace(',', '.').toDoubleOrNull()
+    val y = b.replace(',', '.').toDoubleOrNull()
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(title) },
+        text = {
+            Column {
+                if (hasLast) Row(verticalAlignment = Alignment.CenterVertically) {
+                    FilterChip(selected = rel, onClick = { rel = true }, label = { Text("Son noktaya göre") })
+                    Spacer(Modifier.width(8.dp))
+                    FilterChip(selected = !rel, onClick = { rel = false }, label = { Text("Mutlak") })
+                }
+                Text(
+                    if (rel) "Son konan noktadan sağa (+X) ve yukarı (+Y) uzaklık." else "Dosyadaki koordinat (AutoCAD'deki X, Y).",
+                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(vertical = 6.dp),
+                )
+                OutlinedTextField(a, { a = it }, label = { Text(if (rel) "ΔX" else "X") }, singleLine = true, isError = a.isNotEmpty() && x == null,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal))
+                Spacer(Modifier.height(8.dp))
+                OutlinedTextField(b, { b = it }, label = { Text(if (rel) "ΔY" else "Y") }, singleLine = true, isError = b.isNotEmpty() && y == null,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal))
+            }
+        },
+        confirmButton = { TextButton(enabled = x != null && y != null, onClick = { onOk(x!!, y!!, rel) }) { Text("Uygula") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("İptal") } },
+    )
+}
+
+/** Uzunluk adımı: açık/kapalı ve değer */
+@Composable
+private fun StepDialog(on: Boolean, step: Double, unit: String, onDismiss: () -> Unit, onOk: (Boolean, Double) -> Unit) {
+    var t by remember { mutableStateOf(trimNum(step)) }
+    val v = t.replace(',', '.').toDoubleOrNull()?.takeIf { it > 0 }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Uzunluk adımı") },
+        text = {
+            Column {
+                Text(
+                    "Açıkken çizgi uzunluğu, yarıçap ve dikdörtgen kenarları bu adımın katlarına yuvarlanır. Mıknatısın yakaladığı noktalar önceliklidir.",
+                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Spacer(Modifier.height(8.dp))
+                Row(Modifier.horizontalScroll(rememberScrollState())) {
+                    for (c in listOf(0.1, 0.5, 1.0, 5.0, 10.0, 50.0, 100.0)) {
+                        FilterChip(selected = v == c, onClick = { t = trimNum(c) }, label = { Text(trimNum(c)) })
+                        Spacer(Modifier.width(6.dp))
+                    }
+                }
+                OutlinedTextField(t, { t = it }, label = { Text("Adım" + if (unit.isEmpty()) "" else " ($unit)") }, singleLine = true,
+                    isError = v == null, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal))
+            }
+        },
+        confirmButton = { TextButton(enabled = v != null, onClick = { onOk(true, v!!) }) { Text("Aç") } },
+        dismissButton = {
+            Row {
+                if (on) TextButton(onClick = { onOk(false, v ?: step) }) { Text("Kapat") }
+                TextButton(onClick = onDismiss) { Text("İptal") }
+            }
+        },
     )
 }
 

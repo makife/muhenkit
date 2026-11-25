@@ -13,7 +13,8 @@ public sealed record ProjectMeta(
     int[]? Hidden = null,
     long SizeBytes = 0,
     /// <summary>Kullanıcının seçtiği çizim birimi (4 mm, 5 cm, 6 m); eski DXF sürümleri birimi dosyada tutamaz</summary>
-    int Units = -1);
+    int Units = -1,
+    double Step = 0);
 
 /// <summary>
 /// "Projelerim": açılan her DXF uygulamanın kendi alanına kopyalanır, düzenlemeler bu kopyaya
@@ -72,7 +73,7 @@ public static class ProjectStore
                 (long?)j["created"] ?? 0, (long?)j["modified"] ?? 0, (bool?)j["dirty"] ?? false,
                 j["view"]?.AsArray().Select(v => (double)v!).ToArray(),
                 j["hidden"]?.AsArray().Select(v => (int)v!).ToArray(),
-                drawing.Exists ? drawing.Length : 0);
+                drawing.Exists ? drawing.Length : 0, (int?)j["units"] ?? -1, (double?)j["step"] ?? 0);
         }
     }
 
@@ -84,6 +85,8 @@ public static class ProjectStore
         };
         if (m.View != null) j["view"] = new JsonArray(m.View.Select(v => (JsonNode)v).ToArray());
         j["hidden"] = new JsonArray((m.Hidden ?? []).Select(v => (JsonNode)v).ToArray());
+        j["units"] = m.Units;
+        j["step"] = m.Step;
         lock (Lock) AtomicWrite(Path.Combine(Dir(m.Id), "meta.json"), System.Text.Encoding.UTF8.GetBytes(j.ToJsonString()));
     }
 

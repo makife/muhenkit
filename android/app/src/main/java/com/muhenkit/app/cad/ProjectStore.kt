@@ -35,6 +35,8 @@ data class ProjectMeta(
     val sizeBytes: Long = 0,
     /** Kullanıcının seçtiği çizim birimi (4 mm, 5 cm, 6 m); eski DXF sürümleri birimi dosyada tutamaz */
     val units: Int = -1,
+    /** Uzunluk adımı: artı açık, eksi kapalı (değer korunur), 0 hiç ayarlanmamış */
+    val step: Double = 0.0,
 )
 
 /** Ekrandan çıkınca da biten işler (otomatik kayıt) için uygulama ömürlü kapsam */
@@ -77,6 +79,7 @@ object ProjectStore {
             hidden = h?.let { a -> (0 until a.length()).map { a.getInt(it) }.toSet() } ?: emptySet(),
             sizeBytes = drawing(c, id).length(),
             units = j.optInt("units", -1),
+            step = j.optDouble("step", 0.0).takeIf { it.isFinite() } ?: 0.0,
         )
     }
 
@@ -88,6 +91,7 @@ object ProjectStore {
         m.view?.let { v -> j.put("view", JSONArray().apply { v.forEach { put(it) } }) }
         j.put("hidden", JSONArray().apply { m.hidden.forEach { put(it) } })
         j.put("units", m.units)
+        j.put("step", m.step)
         atomicWrite(File(dir(c, m.id), "meta.json"), j.toString().toByteArray())
     }
 

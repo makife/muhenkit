@@ -42,6 +42,7 @@ public sealed partial class CadPage : Page
     {
         InitializeComponent();
         _ed = new CadEditor(Canvas);
+        RestoreStep(0);
         _ed.Changed += SyncUi;
         _ed.LiveChanged += SyncLive;
         _ed.Message += ShowMessage;
@@ -290,6 +291,7 @@ public sealed partial class CadPage : Page
             case VirtualKey.Enter: _ed.Enter(); return true;
             case VirtualKey.F3: SnapToggle.IsChecked = !(SnapToggle.IsChecked ?? false); OnModeToggle(this, new RoutedEventArgs()); return true;
             case VirtualKey.F8: OrthoToggle.IsChecked = !(OrthoToggle.IsChecked ?? false); OnModeToggle(this, new RoutedEventArgs()); return true;
+            case VirtualKey.F9: StepToggle.IsChecked = !(StepToggle.IsChecked ?? false); OnModeToggle(this, new RoutedEventArgs()); return true;
             case VirtualKey.F10: PolarToggle.IsChecked = !(PolarToggle.IsChecked ?? false); OnModeToggle(this, new RoutedEventArgs()); return true;
             case VirtualKey.F11: TrackToggle.IsChecked = !(TrackToggle.IsChecked ?? false); OnModeToggle(this, new RoutedEventArgs()); return true;
         }
@@ -334,6 +336,30 @@ public sealed partial class CadPage : Page
         _ed.Ortho = OrthoToggle.IsChecked == true;
         _ed.AngleSnap = PolarToggle.IsChecked == true;
         _ed.Tracking = TrackToggle.IsChecked == true;
+        if (_ed.StepOn != (StepToggle.IsChecked == true)) _metaChanged = true;
+        _ed.StepOn = StepToggle.IsChecked == true;
+    }
+
+    private void OnStepValue(NumberBox sender, NumberBoxValueChangedEventArgs e)
+    {
+        if (_ed == null || _syncing) return;
+        if (double.IsNaN(sender.Value) || sender.Value <= 0) { sender.Value = _ed.LengthStep; return; }
+        if (Math.Abs(sender.Value - _ed.LengthStep) < 1e-12) return;
+        _ed.LengthStep = sender.Value;
+        _metaChanged = true;
+        if (StepToggle.IsChecked != true) { StepToggle.IsChecked = true; _ed.StepOn = true; }
+    }
+
+    /// <summary>Proje bilgisindeki adım: artı açık, eksi kapalı (değer korunur), 0 hiç ayarlanmamış</summary>
+    private void RestoreStep(double step)
+    {
+        _ed.LengthStep = step == 0 ? 1 : Math.Abs(step);
+        _ed.StepOn = step > 0;
+        bool was = _syncing;
+        _syncing = true;
+        StepBox.Value = _ed.LengthStep;
+        StepToggle.IsChecked = _ed.StepOn;
+        _syncing = was;
     }
 
     // ───────────────────────── dosya ve projeler ─────────────────────────
@@ -420,6 +446,7 @@ public sealed partial class CadPage : Page
             ViewState? initial = m.View is { Length: 3 } v ? new ViewState(v[0] - doc.OriginX, v[1] - doc.OriginY, v[2]) : null;
             Canvas.SetScene(s, initial);
             _ed.Attach(doc);
+            RestoreStep(m.Step);
             FillLayers(s);
             InfoText.Text = $"{s.EntityCount} nesne · {s.Layers.Count} katman · {s.Version} · {s.ParseMs} ms";
             BuildCommands(Tabs.Items.IndexOf(Tabs.SelectedItem));
@@ -440,6 +467,7 @@ public sealed partial class CadPage : Page
             if (Environment.GetEnvironmentVariable("MUHENKIT_SELFTEST") == "e") _ = SelfTestExport();
             if (Environment.GetEnvironmentVariable("MUHENKIT_SELFTEST") == "ea") _ = SelfTestTitleExport();
             if (Environment.GetEnvironmentVariable("MUHENKIT_SELFTEST") == "arc") _ = SelfTestArc();
+            if (Environment.GetEnvironmentVariable("MUHENKIT_SELFTEST") == "step") _ = SelfTestStep();
             if (Environment.GetEnvironmentVariable("MUHENKIT_SELFTEST") == "ed") OnExport();
             if (Environment.GetEnvironmentVariable("MUHENKIT_SELFTEST") is ['f', var fk]) AddTable((TableForms.Kind)(fk - '1'));
         }
@@ -480,6 +508,7 @@ public sealed partial class CadPage : Page
         var hidden = Canvas.Hidden.ToArray();
         var v = Canvas.View;
         double[] view = [v.Cx + d.OriginX, v.Cy + d.OriginY, v.Zoom];
+        double step = _ed.StepOn ? _ed.LengthStep : -_ed.LengthStep;
         var prev = _saving;
         _saving = Task.Run(async () =>
         {
@@ -487,7 +516,7 @@ public sealed partial class CadPage : Page
             try
             {
                 if (edits > 0) ProjectStore.WriteDrawing(m.Id, d.SaveCopy());
-                var nm = m with { Modified = edits > 0 ? ProjectStore.Now : m.Modified, DirtyToSource = d.Dirty, View = view, Hidden = hidden, Units = s.Units };
+                var nm = m with { Modified = edits > 0 ? ProjectStore.Now : m.Modified, DirtyToSource = d.Dirty, View = view, Hidden = hidden, Units = s.Units, Step = step };
                 ProjectStore.SaveMeta(nm);
                 if (edits > 0 || !File.Exists(ProjectStore.Thumb(m.Id))) ProjectStore.WriteThumb(m.Id, ScenePainter.RenderPng(s, hidden, 480, 300));
             }
@@ -1280,6 +1309,43 @@ public sealed partial class CadPage : Page
             log.AppendLine("geri al: r=" + (_ed.SelectedGeometry()?.Values["r"].ToString("0.###") ?? "seçim yok"));
             _ed.SetUnits(6); await Idle();
             log.AppendLine($"birim {d.Scene.Units} · kutu {UnitBox.SelectedItem} · etiket {CadEditor.UnitLabel}");
+        }
+        catch (Exception ex) { log.AppendLine("HATA " + ex); }
+        await File.WriteAllTextAsync(Path.Combine(Path.GetTempPath(), "muhenkit_selftest.txt"), log.ToString());
+    }
+
+    /// <summary>MUHENKIT_SELFTEST=step: uzunluk adımı ve yazılarak verilen ilk nokta</summary>
+    private async Task SelfTestStep()
+    {
+        var log = new System.Text.StringBuilder();
+        async Task Idle() { await Task.Delay(50); while (_ed.Busy) await Task.Delay(20); await Task.Delay(50); }
+        try
+        {
+            await Task.Delay(500);
+            var d = _doc!;
+            var inv = System.Globalization.CultureInfo.InvariantCulture;
+            double tol = Canvas.Tolerance;
+            StepBox.Value = 0.5; // adımı değiştirmek ADIM'ı açar
+            log.AppendLine($"adım {_ed.LengthStep} açık {_ed.StepOn} düğme {StepToggle.IsChecked}");
+            PolarToggle.IsChecked = false; OnModeToggle(this, new RoutedEventArgs());
+            SnapToggle.IsChecked = false; OnModeToggle(this, new RoutedEventArgs());
+            _ed.SelectTool(CadTool.Line);
+            // ilk nokta yazılarak (mutlak), ikincisi fareyle: (3.3, 1.1) yönünde uzunluk 3.478 → 3.5
+            log.AppendLine($"komut ilk: {_ed.Command($"{(d.OriginX + 10).ToString(inv)},{(d.OriginY + 20).ToString(inv)}")}");
+            double ex = 10 + 3.3, ey = 20 + 1.1;
+            _ed.Move(ex, ey, tol, false);
+            log.AppendLine("canlı: " + _ed.Live);
+            _ed.Press(ex, ey, tol, false); _ed.Release(ex, ey, tol); await Idle();
+            // ardından @ ile son noktaya göre
+            _ed.Escape(); _ed.SelectTool(CadTool.Line);
+            log.AppendLine($"komut @: {_ed.Command("@1,0")} · {_ed.Command("@0,2")}"); await Idle(); _ed.Escape();
+            for (int id = 0; id < d.Scene.EntityCount; id++)
+            {
+                var pr = d.Props(id);
+                if (pr == null || !pr.ContainsKey("x1")) continue;
+                double x1 = pr["x1"] - d.OriginX, y1 = pr["y1"] - d.OriginY, x2 = pr["x2"] - d.OriginX, y2 = pr["y2"] - d.OriginY;
+                log.AppendLine($"çizgi {id}: ({x1:0.###},{y1:0.###})→({x2:0.###},{y2:0.###}) L={Math.Sqrt((x2 - x1) * (x2 - x1) + (y2 - y1) * (y2 - y1)):0.####}");
+            }
         }
         catch (Exception ex) { log.AppendLine("HATA " + ex); }
         await File.WriteAllTextAsync(Path.Combine(Path.GetTempPath(), "muhenkit_selftest.txt"), log.ToString());

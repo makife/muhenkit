@@ -100,6 +100,11 @@ final class CadEditor: ObservableObject {
     @Published var snapOn = true
     @Published var angleSnap = true
     @Published var tracking = true
+    /// Uzunluk adımı: serbest çizimde uzunluk/yarıçap/en-boy bu adıma yuvarlanır (çizim biriminde)
+    @Published var stepOn = false
+    @Published var lengthStep = 1.0
+    /// En son verilen nokta ("@dx,dy" buna göre)
+    private(set) var lastPt: Pt?
     @Published var mirrorKeep = true
     @Published var textHeight = 2.5
     @Published var offsetDist = 1.0
@@ -481,7 +486,33 @@ final class CadEditor: ObservableObject {
         }
     }
 
-    private func constrain(_ p: SnapPt) -> SnapPt {
+    private func constrain(_ p: SnapPt) -> SnapPt { step(constrainCore(p)) }
+
+    /// Uzunluk adımı: başlangıçtan geçen doğrultu korunur, uzaklık adıma yuvarlanır (yakalama ve hizalama izi öncelikli)
+    private func step(_ p: SnapPt) -> SnapPt {
+        let s = lengthStep
+        guard stepOn, s > 0, p.kind == 0 else { return p }
+        if let tl = trackLabel, !tl.hasPrefix("Kutupsal"), tl != "Paralel", tl != "Dik" { return p }
+        func r(_ v: Double) -> Double { (v / s).rounded() * s }
+        if tool == .rect {
+            guard let r0 = anchor else { return p }
+            return (0, r0.x + r(p.x - r0.x), r0.y + r(p.y - r0.y))
+        }
+        let o: Pt?
+        switch tool {
+        case .line, .pline, .move, .copy: o = from
+        case .circle: o = anchor
+        case .arc: o = arcStart == nil ? anchor : nil
+        default: o = nil
+        }
+        guard let f = o else { return p }
+        let dx = p.x - f.x, dy = p.y - f.y, l = (dx * dx + dy * dy).squareRoot()
+        guard l >= 1e-12 else { return p }
+        let n = max(s, r(l))
+        return (0, f.x + dx / l * n, f.y + dy / l * n)
+    }
+
+    private func constrainCore(_ p: SnapPt) -> SnapPt {
         guides = nil
         trackLabel = nil
         if p.kind > 0 || tool == .select { return p }
@@ -715,6 +746,7 @@ final class CadEditor: ObservableObject {
 
     private func point(_ p: Pt, _ tol: Double) {
         guard let d = doc else { return }
+        if tool != .select { lastPt = p }
         if tracking && ![.select, .offset, .text].contains(tool) {
             acq.removeAll { abs($0.x - p.x) + abs($0.y - p.y) < 1e-9 }
             acq.append(p)
@@ -1165,7 +1197,9 @@ final class CadEditor: ObservableObject {
         if parts.count == 2, let x = num(parts[0]), let y = num(parts[1]) {
             if tool == .rect, let r0 = fromPt { point((r0.x + x, r0.y + y), tol); return true }
             if let f = fromPt, tool != .rotate, tool != .scale { point((f.x + x, f.y + y), tol); return true }
-            point(rel ? (hover.x + x, hover.y + y) : (x - d.originX, y - d.originY), tol)
+            // ilk nokta: "@dx,dy" son verilen noktaya (yoksa imlece) göre
+            let b = lastPt ?? hover
+            point(rel ? (b.x + x, b.y + y) : (x - d.originX, y - d.originY), tol)
             return true
         }
         guard parts.count == 1, let v = num(parts[0]) else { return false }

@@ -113,6 +113,13 @@ class CadGlView(context: Context) : GLSurfaceView(context) {
         if (animated) animateTo(target) else setView(target)
     }
 
+    /** Nokta ekranın dışındaysa ortala (yakınlaştırma aynı kalır) */
+    fun reveal(x: Double, y: Double) {
+        val w = viewWindow()
+        if (x >= w.left && x <= w.right && y >= w.top && y <= w.bottom) return
+        animateTo(ViewState(x, y, renderer.view.zoom))
+    }
+
     private fun setView(v: ViewState) {
         renderer.view = v
         requestRender()

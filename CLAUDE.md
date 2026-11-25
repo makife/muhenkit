@@ -30,6 +30,11 @@ Platformlar arası eşdeğer dosyalar (bir özellik eklerken hepsini güncelle):
 - Yay aracı: merkez → başlangıç noktası → açı (eksi = saat yönü). Çekirdek `mk_add_arc` (açılar derece, CCW).
 - Özellik ekranında geometri düzenleme: `mk_entity_props` / `mk_set_entity_props` ("anahtar=değer" satırları; LINE x1 y1 x2 y2,
   CIRCLE cx cy r, ARC cx cy r a0 a1; geri alınabilir). Çekirdek mutlak koordinat verir, düzenleyici origin çıkarılmış göreli koordinat kullanır.
+- Uzunluk adımı (Windows durum çubuğu ADIM/F9 + Çizim ayarları; mobilde Ayarlar → Adım): serbest noktada uzunluk/yarıçap/en-boy
+  adıma yuvarlanır; nesne yakalama ve hizalama izleri önceliklidir (yalnız kutupsal/paralel/dik izde uygulanır). Proje meta'sında
+  `step`: artı açık, eksi kapalı (değer korunur), 0 ayarlanmamış.
+- İlk nokta yazılarak: Windows komut satırında `x,y` (mutlak, dosyadaki koordinat) ya da `@dx,dy` (son konan noktaya göre);
+  mobilde ipucu çubuğundaki "Nokta" düğmesi (Android ayrı X/Y alanlı pencere, iOS aynı sözdizimi).
 
 Tasarım: Android arayüzü esastır (mavi devre kartı ana sayfa, çizimde gizlenebilir üst çubuk + ipucu çubuğu +
 Çiz/Düzenle/Ekle/Ayarlar sekmeleri, geniş ekranda sol ray). iOS/macOS bununla birebir aynı olmalı.
@@ -43,7 +48,7 @@ Tasarım: Android arayüzü esastır (mavi devre kartı ana sayfa, çizimde gizl
   `dotnet publish` KULLANMA (.pri/.xbf atlıyor, uygulama çöker).
 - **iOS/macOS**: yerelde derlenemez (Mac yok) → yalnızca GitHub Actions.
 
-Windows test bayrakları: `MuhenKit.exe <dxf>` · `--projeler` · `--modul=<RouteId>`; ortam `MUHENKIT_SELFTEST=1|2|3|e|ea|ed|arc|f1|f2|f3|demo`
+Windows test bayrakları: `MuhenKit.exe <dxf>` · `--projeler` · `--modul=<RouteId>`; ortam `MUHENKIT_SELFTEST=1|2|3|e|ea|ed|arc|step|f1|f2|f3|demo`
 (sonuç `%TEMP%\muhenkit_selftest.txt`, hata günlüğü `%TEMP%\muhenkit_log.txt`).
 
 ## CI (GitHub Actions, depo makife/muhenkit)

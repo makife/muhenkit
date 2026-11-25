@@ -53,6 +53,9 @@ final class CadModel: ObservableObject {
                 }
                 return d
             }.value
+            let st = meta.step ?? 0
+            editor.lengthStep = st == 0 ? 1 : abs(st)
+            editor.stepOn = st > 0
             d.setDirty(meta.dirty)
             project = meta
             ProjectStore.lastProject = id
@@ -87,6 +90,7 @@ final class CadModel: ObservableObject {
         m.view = [view.cx + d.originX, view.cy + d.originY, view.zoom]
         m.hidden = Array(hidden).sorted()
         if let u = d.scene?.units, [4, 5, 6].contains(u) { m.units = u }
+        m.step = editor.stepOn ? editor.lengthStep : -editor.lengthStep
         ProjectStore.saveMeta(m)
         project = m
     }
@@ -208,12 +212,20 @@ struct CadScreen: View {
             .onChange(of: model.editor.textRequest) { p in if p != nil { textSize = Calc.fmt(model.editor.textHeight, 2) } }
     }
 
+    /// Çizim aracında ilk nokta konmuş mu (değilse "Değer" ilk noktayı sorar)
+    private var firstPointGiven: Bool {
+        let ed = model.editor
+        return ed.tool == .pline ? ed.plineCount > 0 : ed.hasAnchor
+    }
+
     private var numberTitle: String {
         switch numberAsk {
         case .offset: return "Öteleme mesafesi"
         case .symbol: return "Sembol ölçeği"
         case .rotate: return "Döndürme açısı (°)"
         case .scale: return "Ölçek çarpanı"
+        case .some(let t) where [CadTool.line, .pline, .circle, .arc, .rect].contains(t) && !firstPointGiven:
+            return model.editor.tool == .circle || model.editor.tool == .arc ? "Merkez noktası" : model.editor.tool == .rect ? "İlk köşe" : "Başlangıç noktası"
         case .circle: return "Yarıçap" + model.editor.unitSuffixParen
         case .arc: return model.editor.arcStage == 1 ? "Yarıçap" + model.editor.unitSuffixParen : "Yay açısı (°)"
         case .rect: return "Genişlik, yükseklik"
@@ -224,6 +236,8 @@ struct CadScreen: View {
 
     private var numberHint: String {
         switch numberAsk {
+        case .some(let t) where [CadTool.line, .pline, .circle, .arc, .rect].contains(t) && !firstPointGiven:
+            return "X,Y: dosyadaki koordinat (ör. 0,0) · @dx,dy: son konan noktaya göre (ör. @5,0)"
         case .line, .pline: return "Uzunluk (imleç yönünde), uzunluk<açı ya da dx,dy"
         case .arc: return model.editor.arcStage == 1 ? "Yarıçap (imleç yönünde) ya da yarıçap<başlangıç açısı" : "Başlangıçtan saat yönü tersine, ör. 67 (eksi: saat yönünde)"
         case .rect: return "ör. 400,300"
@@ -338,6 +352,8 @@ private struct EditorBody: View {
     @State private var toast: String?
     @State private var showTables = false
     @State private var showUnits = false
+    @State private var showStep = false
+    @State private var stepText = ""
 
     private static let railW: CGFloat = 64
     private static let sideW: CGFloat = 92
@@ -417,6 +433,20 @@ private struct EditorBody: View {
             }
         } message: {
             Text("Yazdığınız uzunluk, yarıçap ve ölçüler bu birimde olur. Mevcut çizim ölçeklenmez.")
+        }
+        .alert("Uzunluk adımı" + editor.unitSuffixParen, isPresented: $showStep) {
+            TextField("Adım", text: $stepText)
+                #if os(iOS)
+                .keyboardType(.decimalPad)
+                #endif
+            Button("Aç") {
+                if let v = Double(stepText.replacingOccurrences(of: ",", with: ".")), v > 0 { editor.lengthStep = v; editor.stepOn = true }
+                else { editor.message = "Geçersiz adım: \(stepText)" }
+            }
+            if editor.stepOn { Button("Kapat") { editor.stepOn = false } }
+            Button("Vazgeç", role: .cancel) {}
+        } message: {
+            Text("Açıkken çizgi uzunluğu, yarıçap ve dikdörtgen kenarları bu adımın katlarına yuvarlanır (ör. 1, 0.5, 10). Mıknatısın yakaladığı noktalar önceliklidir.")
         }
     }
 
@@ -577,7 +607,7 @@ private struct EditorBody: View {
     private var hintButtons: [HintBtn] {
         let ed = editor
         var b: [HintBtn] = []
-        if drawTool && drawStarted { b.append(HintBtn(title: "Değer", action: onNumber)) }
+        if drawTool { b.append(HintBtn(title: drawStarted ? "Değer" : "Nokta", action: onNumber)) }
         if (ed.tool == .line || ed.tool == .pline) && drawStarted { b.append(HintBtn(title: "Bitir") { ed.enter() }) }
         if ed.tool == .pline && ed.plineCount >= 3 { b.append(HintBtn(title: "Kapat") { ed.finishPolyline(closed: true) }) }
         if ed.tool == .offset { b.append(HintBtn(title: "Mesafe", action: onNumber)) }
@@ -678,6 +708,10 @@ private struct EditorBody: View {
                 ToolItem(icon: "plus", label: "Orto", active: ed.ortho) { ed.ortho.toggle() },
                 ToolItem(icon: "line.3.horizontal", label: "İz", active: ed.tracking) { ed.tracking.toggle() },
                 ToolItem(icon: "ruler", label: "Birim: " + (ed.unitLabel.isEmpty ? "?" : ed.unitLabel), active: false, enabled: ed.scene != nil && free) { showUnits = true },
+                ToolItem(icon: "number", label: ed.stepOn ? "Adım " + CadEditor.fmt(ed.lengthStep) : "Adım", active: ed.stepOn, enabled: ed.scene != nil) {
+                    stepText = CadEditor.fmt(ed.lengthStep)
+                    showStep = true
+                },
             ]
         }
     }

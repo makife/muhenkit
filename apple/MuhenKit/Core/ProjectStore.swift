@@ -15,6 +15,8 @@ struct ProjectMeta: Codable, Identifiable, Hashable {
     var sizeBytes: Int64 = 0
     /// Kullanıcının seçtiği çizim birimi (4 mm, 5 cm, 6 m); eski DXF sürümleri birimi dosyada tutamaz
     var units: Int?
+    /// Uzunluk adımı: artı açık, eksi kapalı (değer korunur), nil/0 hiç ayarlanmamış
+    var step: Double?
 }
 
 /// "Projelerim": açılan her DXF uygulamanın kendi alanına kopyalanır, düzenlemeler bu kopyaya otomatik kaydedilir.
